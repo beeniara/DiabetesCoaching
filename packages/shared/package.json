@@ -1,0 +1,9 @@
+{
+  "name": "@diabetes-coaching/shared",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": { "test": "vitest run" },
+  "dependencies": { "zod": "^3.24.2" },
+  "devDependencies": { "typescript": "^5.7.3", "vitest": "^3.0.8" }
+}

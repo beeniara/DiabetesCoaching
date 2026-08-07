@@ -1,0 +1,9 @@
+{
+  "expo": {
+    "name": "Diabetes Coaching App",
+    "slug": "diabetes-coaching-app",
+    "scheme": "diabetescoaching",
+    "plugins": ["expo-notifications", "expo-sqlite"],
+    "userInterfaceStyle": "automatic"
+  }
+}

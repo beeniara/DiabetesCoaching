@@ -1,0 +1,10 @@
+{
+  "name": "diabetes-coaching-app",
+  "private": true,
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "dev:mobile": "npm --workspace @diabetes-coaching/mobile run start",
+    "dev:server": "npm --workspace @diabetes-coaching/local-server run dev",
+    "test": "npm --workspace @diabetes-coaching/shared run test"
+  }
+}
