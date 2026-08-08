@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
-import { DEFAULT_CARE_TARGETS } from "../../packages/shared/src/clinical";
+import { DEFAULT_CARE_TARGETS, type GlucoseContext } from "../../packages/shared/src/clinical";
+import { buildClinicianReviewSummary, formatClinicianReviewSummary } from "../../packages/shared/src/glucose-review";
 import { createMedicationPlan, describeMedicationPlanStatus, medicationPlanNeedsReschedule, type MedicationPlan } from "../../packages/shared/src/medication-plans";
 import { createDefaultUserProfile, type UserProfile } from "../../packages/shared/src/profile";
 import { addGlucoseEntry, addMedicationEntry, acceptConsent, getOrCreateUserProfile, listHealthEvents, listMedicationPlans, openLocalStore, saveMedicationPlan, saveUserProfile } from "./src/storage";
@@ -51,6 +52,8 @@ export default function App() {
   const [plans, setPlans] = useState<MedicationPlan[]>([]);
   const [statusMessage, setStatusMessage] = useState("Loading local data...");
   const [capability, setCapability] = useState<{ granted: boolean; canSchedule: boolean; exactAlarmNote: string } | null>(null);
+  const [reviewContext, setReviewContext] = useState<GlucoseContext>("postprandial");
+  const [reviewExport, setReviewExport] = useState("");
   const [inputs, setInputs] = useState<InputState>(initialInputs);
 
   useEffect(() => {
@@ -223,8 +226,15 @@ export default function App() {
     }
   }
 
+  function handleGenerateReviewExport() {
+    const exportText = formatClinicianReviewSummary(clinicianReview);
+    setReviewExport(exportText);
+    setStatusMessage("Clinician review summary generated locally.");
+  }
+
   const timeline = events.length > 0 ? dbState : summarizeTimeline(fallbackEvents);
   const latestGlucoseCard = timeline.latestGlucose ? safeGlucoseDisplay(timeline.latestGlucose) : glucoseDisplay;
+  const clinicianReview = useMemo(() => buildClinicianReviewSummary(timeline.events, reviewContext, DEFAULT_CARE_TARGETS), [reviewContext, timeline.events]);
   const consentBanner = profile?.consentState === "accepted"
     ? "Consent is active for local tracking."
     : profile?.consentState === "revoked"
@@ -267,6 +277,21 @@ export default function App() {
           <Text style={styles.muted}>Timeline freshness: {timeline.freshness}</Text>
           <Text style={styles.muted}>Capillary reading: {timeline.latestGlucose?.compartment === "capillary-blood" ? "yes" : "no"}</Text>
           <Text style={styles.muted}>Cloud and physiological delay are labeled separately.</Text>
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Glucose trend and targets</Text>
+          <View style={styles.rowWrap}>
+            {(["fasting", "postprandial"] as const).map((context) => (
+              <Pressable key={context} accessibilityRole="button" style={reviewContext === context ? styles.pillActive : styles.pill} onPress={() => setReviewContext(context)}>
+                <Text style={reviewContext === context ? styles.pillActiveText : styles.pillText}>{context}</Text>
+              </Pressable>
+            ))}
+          </View>
+          <Text style={styles.bodyText}>{clinicianReview.glucoseTrend.message}</Text>
+          <Text style={styles.muted}>{clinicianReview.glucoseTrend.safetyNote}</Text>
+          <Text style={styles.muted}>{clinicianReview.targetReview.message}</Text>
+          <Text style={styles.muted}>Target context is clinician-reviewable and should stay configurable.</Text>
         </View>
 
         <View style={styles.card}>
@@ -371,6 +396,23 @@ export default function App() {
         </View>
 
         <View style={styles.card}>
+          <Text style={styles.cardTitle}>Clinician review export</Text>
+          <Text style={styles.bodyText}>Generate a plain-text snapshot for pattern review. It stays local unless you copy or share it yourself.</Text>
+          <View style={styles.row}>
+            <Pressable accessibilityRole="button" style={styles.primaryButton} onPress={handleGenerateReviewExport}>
+              <Text style={styles.primaryButtonText}>Generate export</Text>
+            </Pressable>
+          </View>
+          <TextInput
+            value={reviewExport || formatClinicianReviewSummary(clinicianReview)}
+            editable={false}
+            multiline
+            style={styles.exportBox}
+            placeholderTextColor="#80918A"
+          />
+        </View>
+
+        <View style={styles.card}>
           <Text style={styles.cardTitle}>Demo context</Text>
           <Text style={styles.bodyText}>Mock meal estimate: {mockMealVision().carbohydrateRangeGrams?.min}-{mockMealVision().carbohydrateRangeGrams?.max} g carbohydrate.</Text>
           <Text style={styles.bodyText}>Mock exercise: {mockImuExercise().activity}, {mockImuExercise().durationMinutes} min, {mockImuExercise().intensity}.</Text>
@@ -414,6 +456,7 @@ const styles = StyleSheet.create({
   label: { color: colors.text, fontWeight: "700" },
   fieldGroup: { gap: 6 },
   input: { borderWidth: 1, borderColor: colors.border, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, color: colors.text, backgroundColor: "#FBFCFB" },
+  exportBox: { borderWidth: 1, borderColor: colors.border, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, color: colors.text, backgroundColor: "#FBFCFB", minHeight: 180, textAlignVertical: "top" },
   row: { flexDirection: "row", gap: 10, flexWrap: "wrap" },
   rowWrap: { flexDirection: "row", gap: 8, flexWrap: "wrap" },
   flexOne: { flex: 1, minWidth: 120 },
