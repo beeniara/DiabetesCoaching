@@ -9,6 +9,10 @@ export async function validateGptShelfResponse(candidate: unknown): Promise<Shel
   return ShelfAnalysisSchema.parse(candidate);
 }
 
+export function isOpenAiConfigured() {
+  return Boolean(process.env.OPENAI_API_KEY?.trim());
+}
+
 export const SHELF_ANALYSIS_SYSTEM_INSTRUCTIONS = [
   "Return JSON only; no Markdown or prose outside JSON.",
   "Identify only visibly supported product information; state limitations when labels are unclear.",

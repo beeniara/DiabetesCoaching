@@ -21,7 +21,13 @@ Default starting context: fasting glucose 6.0–8.0 mmol/L, postprandial glucose
 1. Local profile, configurable targets, manual glucose log, and exportable clinician-review summary.
 2. Deterministic device-scheduled medication reminders with acknowledgement; no medicine changes or missed-dose advice.
 3. Chat-like grocery-shelf photo workflow: capture, explain what is visible, and queue an optional review. Any GPT-4o response is validated against a strict JSON schema before display.
-4. Local-server-only integration boundary, audit-friendly records, and no cloud dependency for core daily tracking.
+4. Local-server-only integration boundary, audit-friendly records, protected analysis endpoints, and no cloud dependency for core daily tracking.
+
+## Local server notes
+
+- Set `LOCAL_SERVER_API_KEY` before using protected `/v1/*` routes.
+- Optional GPT-backed shelf analysis also requires `OPENAI_API_KEY`; otherwise the server fails closed with a clear 503 response.
+- Set `LOCAL_SERVER_AUDIT_LOG` to capture a redacted JSONL audit trail.
 
 ## Run (after installing dependencies)
 
