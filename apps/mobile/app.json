@@ -4,6 +4,9 @@
     "slug": "diabetes-coaching-app",
     "scheme": "diabetescoaching",
     "plugins": ["expo-notifications", "expo-sqlite"],
+    "android": {
+      "permissions": ["SCHEDULE_EXACT_ALARM", "POST_NOTIFICATIONS"]
+    },
     "userInterfaceStyle": "automatic"
   }
 }

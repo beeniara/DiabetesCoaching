@@ -16,6 +16,16 @@ The grocery experience is a chat thread: take/select shelf photo → local pendi
 
 ## Delivery phases
 
+### Current implementation status
+
+- Repository inspection completed: Expo/React Native mobile app, optional Express local server, and shared TypeScript package.
+- Added normalized health-event contracts for glucose compartment, meals, exercise, medication, source, timestamps, confidence, and quality state.
+- Added validation for delayed cloud readings, interstitial-fluid lag risk, duplicate IDs, and conflicting nearby glucose readings.
+- Added SQLite storage for normalized events and user consent/profile metadata.
+- Added notification permission/capability reporting and Android exact-alarm permission declaration. Exact delivery remains platform-dependent and must be verified on physical devices.
+- Added shared unit tests for the new event validation, merge behavior, profile state, and timeline summaries.
+- Built the Phase 1 mobile shell with local consent handling, manual glucose and medication logging, a unified timeline, freshness labels, and reminder scheduling controls.
+
 1. Establish app navigation, local schema/migrations, consent, safety copy, and accessibility baseline.
 2. Implement medication plan entry and native offline schedules. Reconcile schedules after edits, app launches, and timezone changes; test Android/iOS behaviour on physical devices.
 3. Add glucose logging, target context, trend display, clinician-review export, and deterministic rules with unit tests.

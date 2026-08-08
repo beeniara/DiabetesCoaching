@@ -1,0 +1,60 @@
+import { type HealthEvent } from "./health-events";
+
+export type TimelineFreshness = "current" | "delayed" | "limited";
+
+export type TimelineSummary = {
+  events: HealthEvent[];
+  freshness: TimelineFreshness;
+  warning: string;
+  latestEvent?: HealthEvent;
+  latestGlucose?: Extract<HealthEvent, { type: "glucose" }>;
+  counts: Record<HealthEvent["type"], number>;
+};
+
+export function sortHealthTimeline(events: HealthEvent[]): HealthEvent[] {
+  return [...events].sort((a, b) => {
+    const timeDelta = Date.parse(b.occurredAt) - Date.parse(a.occurredAt);
+    if (timeDelta !== 0) return timeDelta;
+    return Date.parse(b.receivedAt) - Date.parse(a.receivedAt);
+  });
+}
+
+export function summarizeTimeline(events: HealthEvent[]): TimelineSummary {
+  const ordered = sortHealthTimeline(events);
+  const counts: Record<HealthEvent["type"], number> = {
+    glucose: 0,
+    meal: 0,
+    exercise: 0,
+    medication: 0
+  };
+
+  for (const event of ordered) counts[event.type] += 1;
+
+  const latestEvent = ordered[0];
+  const latestGlucose = ordered.find((event): event is Extract<HealthEvent, { type: "glucose" }> => event.type === "glucose");
+  const delayedGlucose = latestGlucose?.quality === "delayed" || (latestGlucose?.sensorDelayMinutes ?? 0) > 60;
+  const freshness: TimelineFreshness = delayedGlucose ? "delayed" : latestEvent ? "current" : "limited";
+  const warning = latestGlucose
+    ? latestGlucose.compartment === "interstitial-fluid" && (latestGlucose.sensorDelayMinutes ?? 0) > 0
+      ? "Latest glucose may lag behind blood glucose because it came from interstitial fluid."
+      : latestGlucose.quality === "delayed"
+        ? "Latest glucose was received late from the source device or cloud service."
+        : "Latest glucose is current for the app's timeline."
+    : "No glucose data has been logged yet.";
+
+  return { events: ordered, freshness, warning, latestEvent, latestGlucose, counts };
+}
+
+export function formatTimelineLabel(event: HealthEvent): string {
+  if (event.type === "glucose") return `Glucose ${event.valueMmolL.toFixed(1)} mmol/L`;
+  if (event.type === "meal") {
+    const carbs = event.carbohydrateRangeGrams
+      ? `${event.carbohydrateRangeGrams.min}-${event.carbohydrateRangeGrams.max} g`
+      : event.carbohydrateGrams !== undefined
+        ? `${event.carbohydrateGrams} g`
+        : "carbohydrate estimate pending";
+    return `Meal ${carbs}`;
+  }
+  if (event.type === "exercise") return `${event.activity} for ${event.durationMinutes} min`;
+  return `${event.medicationName} - ${event.status}`;
+}
