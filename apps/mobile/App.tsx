@@ -7,6 +7,8 @@ import { createMedicationPlan, describeMedicationPlanStatus, medicationPlanNeeds
 import { createDefaultUserProfile, type UserProfile } from "../../packages/shared/src/profile";
 import { createMockShelfAnalysis, formatShelfAnalysisSummary } from "../../packages/shared/src/shelf-analysis";
 import { addGlucoseEntry, addMedicationEntry, acceptConsent, deleteShelfThread, getOrCreateUserProfile, listHealthEvents, listMedicationPlans, listShelfThreads, openLocalStore, saveMedicationPlan, saveShelfThread, saveUserProfile, type ShelfThreadRecord } from "./src/storage";
+import { getLocalServerSettings, saveLocalServerSettings, type LocalServerSettingsRecord } from "./src/local-server-storage";
+import { sendShelfAnalysisToLocalServer, type ShelfServerMode } from "./src/local-server";
 import { getMedicationNotificationCapability, reconcileMedicationReminders, syncMedicationReminderWithOptions } from "./src/reminders";
 import { formatTimelineLabel, summarizeTimeline } from "../../packages/shared/src/timeline";
 import { parseHealthEvent, safeGlucoseDisplay, type GlucoseCompartment, type HealthEvent, type MedicationEvent } from "../../packages/shared/src/health-events";
@@ -58,6 +60,11 @@ export default function App() {
   const [reviewContext, setReviewContext] = useState<GlucoseContext>("postprandial");
   const [reviewExport, setReviewExport] = useState("");
   const [shelfCaption, setShelfCaption] = useState("");
+  const [serverSettings, setServerSettings] = useState<LocalServerSettingsRecord>({
+    baseUrl: "",
+    apiKey: "",
+    preferredMode: "mock"
+  });
   const [inputs, setInputs] = useState<InputState>(initialInputs);
 
   useEffect(() => {
@@ -69,6 +76,7 @@ export default function App() {
         const loadedEvents = await listHealthEvents(db, 200);
         const loadedPlans = await listMedicationPlans(db);
         const loadedShelfThreads = await listShelfThreads(db, 50);
+        const loadedServerSettings = await getLocalServerSettings(db);
         const notificationCapability = await getMedicationNotificationCapability();
         const reconciledPlans = await reconcileMedicationReminders(loadedPlans, loadedProfile.timezone, notificationCapability.granted, false);
 
@@ -81,6 +89,7 @@ export default function App() {
         setEvents(loadedEvents);
         setPlans(reconciledPlans.plans);
         setShelfThreads(loadedShelfThreads);
+        if (loadedServerSettings) setServerSettings(loadedServerSettings);
         setCapability(notificationCapability);
         setStatusMessage(reconciledPlans.issues.length > 0 ? reconciledPlans.issues[0] : "Local profile, timeline, and reminder plans loaded.");
       } catch (error) {
@@ -119,6 +128,23 @@ export default function App() {
   async function refreshShelfThreads() {
     const db = await openLocalStore();
     setShelfThreads(await listShelfThreads(db, 50));
+  }
+
+  async function handleSaveServerSettings() {
+    if (!serverSettings.baseUrl.trim()) {
+      setStatusMessage("Enter a local server URL before saving settings.");
+      return;
+    }
+    const normalizedBaseUrl = serverSettings.baseUrl.trim().replace(/\/+$/, "");
+    const db = await openLocalStore();
+    const nextSettings: LocalServerSettingsRecord = {
+      baseUrl: normalizedBaseUrl,
+      apiKey: serverSettings.apiKey.trim(),
+      preferredMode: serverSettings.preferredMode
+    };
+    await saveLocalServerSettings(db, nextSettings);
+    setServerSettings(nextSettings);
+    setStatusMessage("Local server settings saved.");
   }
 
   async function handleAcceptConsent() {
@@ -281,12 +307,29 @@ export default function App() {
   }
 
   async function handleAnalyzeShelfThread(thread: ShelfThreadRecord) {
-    const analysis = createMockShelfAnalysis({ caption: thread.caption, photoUri: thread.localImageUri });
+    let analysis;
+    const hasServer = Boolean(serverSettings.baseUrl.trim() && serverSettings.apiKey.trim());
+    if (hasServer && serverSettings.preferredMode !== "mock") {
+      try {
+        const result = await sendShelfAnalysisToLocalServer(
+          { baseUrl: serverSettings.baseUrl, apiKey: serverSettings.apiKey },
+          { caption: thread.caption, photoUri: thread.localImageUri, candidate: thread.analysis ?? createMockShelfAnalysis({ caption: thread.caption, photoUri: thread.localImageUri }) },
+          serverSettings.preferredMode as ShelfServerMode
+        );
+        analysis = result.analysis;
+        setStatusMessage(`Shelf analysis synced via local server ${result.mode}.`);
+      } catch (error) {
+        analysis = createMockShelfAnalysis({ caption: thread.caption, photoUri: thread.localImageUri });
+        setStatusMessage(error instanceof Error ? error.message : "Local server sync failed; using mock shelf analysis.");
+      }
+    } else {
+      analysis = createMockShelfAnalysis({ caption: thread.caption, photoUri: thread.localImageUri });
+      setStatusMessage("Mock shelf analysis saved locally.");
+    }
     const updatedThread: ShelfThreadRecord = { ...thread, status: "analyzed", analysis };
     const db = await openLocalStore();
     await saveShelfThread(db, updatedThread);
     await refreshShelfThreads();
-    setStatusMessage("Mock shelf analysis saved locally.");
   }
 
   async function handleDeleteShelfThread(threadId: string) {
@@ -474,6 +517,52 @@ export default function App() {
             style={styles.exportBox}
             placeholderTextColor="#80918A"
           />
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Local server sync</Text>
+          <Text style={styles.bodyText}>Optional. Keep this local to your own server. Protected routes require a token, and GPT analysis stays off unless you enable it.</Text>
+          <View style={styles.fieldGroup}>
+            <Text style={styles.label}>Server URL</Text>
+            <TextInput
+              value={serverSettings.baseUrl}
+              onChangeText={(value) => setServerSettings((current) => ({ ...current, baseUrl: value }))}
+              style={styles.input}
+              placeholder="http://192.168.1.20:8787"
+              placeholderTextColor="#80918A"
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+          </View>
+          <View style={styles.fieldGroup}>
+            <Text style={styles.label}>Local server API key</Text>
+            <TextInput
+              value={serverSettings.apiKey}
+              onChangeText={(value) => setServerSettings((current) => ({ ...current, apiKey: value }))}
+              style={styles.input}
+              placeholder="Bearer token"
+              placeholderTextColor="#80918A"
+              autoCapitalize="none"
+              autoCorrect={false}
+              secureTextEntry
+            />
+          </View>
+          <View style={styles.rowWrap}>
+            {(["mock", "validate", "gpt"] as const).map((mode) => (
+              <Pressable key={mode} accessibilityRole="button" style={serverSettings.preferredMode === mode ? styles.pillActive : styles.pill} onPress={() => setServerSettings((current) => ({ ...current, preferredMode: mode }))}>
+                <Text style={serverSettings.preferredMode === mode ? styles.pillActiveText : styles.pillText}>{mode}</Text>
+              </Pressable>
+            ))}
+          </View>
+          <View style={styles.row}>
+            <Pressable accessibilityRole="button" style={styles.primaryButton} onPress={handleSaveServerSettings}>
+              <Text style={styles.primaryButtonText}>Save server settings</Text>
+            </Pressable>
+            <Pressable accessibilityRole="button" style={styles.secondaryButton} onPress={refreshShelfThreads}>
+              <Text style={styles.secondaryButtonText}>Reload queue</Text>
+            </Pressable>
+          </View>
+          <Text style={styles.muted}>The app will fall back to the local mock analysis if the server is unavailable or the token is missing.</Text>
         </View>
 
         <View style={styles.card}>
