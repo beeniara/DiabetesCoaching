@@ -28,7 +28,7 @@ The grocery experience is a chat thread: take/select shelf photo → local pendi
 - Added Phase 2 medication-plan storage, silent launch-time reconciliation, explicit reminder resync controls, and persisted plan status labels.
 - Added Phase 3 glucose trend helpers, target-context review controls, and a local clinician-review export snapshot.
 - Added Phase 4 shelf-photo capture, queued local history, deletion controls, and validated mock shelf-analysis responses.
-- Added Phase 5 local-server auth, redacted audit logging, and fail-closed optional GPT shelf analysis endpoints.
+- Added Phase 5 local-server auth, redacted audit logging, and fail-closed optional GPT shelf analysis endpoints backed by the Responses API and strict shelf-analysis validation.
 - Added Phase 6 mobile server settings, authenticated shelf-analysis requests, and local-server fallback handling for queued shelf threads.
 
 1. Establish app navigation, local schema/migrations, consent, safety copy, and accessibility baseline.

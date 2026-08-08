@@ -283,7 +283,8 @@ export default function App() {
 
     const result = await ImagePicker.launchCameraAsync({
       quality: 0.75,
-      allowsEditing: false
+      allowsEditing: false,
+      base64: true
     });
 
     if (result.canceled || result.assets.length === 0) {
@@ -292,44 +293,73 @@ export default function App() {
     }
 
     const asset = result.assets[0];
+    const photoDataUrl = asset.base64 && asset.mimeType ? `data:${asset.mimeType};base64,${asset.base64}` : undefined;
     const db = await openLocalStore();
+    const hasServer = Boolean(serverSettings.baseUrl.trim() && serverSettings.apiKey.trim());
+    let analysis = undefined;
+    let analysisSource: ShelfThreadRecord["analysisSource"] = undefined;
+    let statusMessage = "Shelf photo queued locally.";
+
+    if (hasServer && serverSettings.preferredMode === "gpt" && photoDataUrl) {
+      try {
+        const result = await sendShelfAnalysisToLocalServer(
+          { baseUrl: serverSettings.baseUrl, apiKey: serverSettings.apiKey },
+          { caption: shelfCaption.trim() || undefined, photoDataUrl },
+          "gpt"
+        );
+        analysis = result.analysis;
+        analysisSource = "local-server";
+        statusMessage = "Shelf photo analyzed via the local GPT server.";
+      } catch (error) {
+        analysis = createMockShelfAnalysis({ caption: shelfCaption, photoUri: asset.uri });
+        analysisSource = "mock";
+        statusMessage = error instanceof Error ? error.message : "Local GPT analysis failed; saved a mock analysis instead.";
+      }
+    } else if (hasServer && serverSettings.preferredMode === "validate") {
+      const candidate = createMockShelfAnalysis({ caption: shelfCaption, photoUri: asset.uri });
+      try {
+        await sendShelfAnalysisToLocalServer(
+          { baseUrl: serverSettings.baseUrl, apiKey: serverSettings.apiKey },
+          { caption: shelfCaption.trim() || undefined, candidate },
+          "validate"
+        );
+        analysis = candidate;
+        analysisSource = "local-server";
+        statusMessage = "Shelf photo validated by the local server.";
+      } catch (error) {
+        analysis = candidate;
+        analysisSource = "mock";
+        statusMessage = error instanceof Error ? error.message : "Local server validation failed; kept the local analysis.";
+      }
+    } else {
+      analysis = createMockShelfAnalysis({ caption: shelfCaption, photoUri: asset.uri });
+      analysisSource = "mock";
+      statusMessage = "Shelf photo analyzed locally.";
+    }
+
     const thread: ShelfThreadRecord = {
       id: createHealthEventId("shelf"),
       createdAt: new Date().toISOString(),
       localImageUri: asset.uri,
       caption: shelfCaption.trim() || undefined,
-      status: "queued"
+      status: analysis ? "analyzed" : "queued",
+      analysis,
+      analysisSource
     };
     await saveShelfThread(db, thread);
     await refreshShelfThreads();
     setShelfCaption("");
-    setStatusMessage("Shelf photo queued locally.");
+    setStatusMessage(statusMessage);
   }
 
   async function handleAnalyzeShelfThread(thread: ShelfThreadRecord) {
     let analysis;
-    const hasServer = Boolean(serverSettings.baseUrl.trim() && serverSettings.apiKey.trim());
-    if (hasServer && serverSettings.preferredMode !== "mock") {
-      try {
-        const result = await sendShelfAnalysisToLocalServer(
-          { baseUrl: serverSettings.baseUrl, apiKey: serverSettings.apiKey },
-          { caption: thread.caption, photoUri: thread.localImageUri, candidate: thread.analysis ?? createMockShelfAnalysis({ caption: thread.caption, photoUri: thread.localImageUri }) },
-          serverSettings.preferredMode as ShelfServerMode
-        );
-        analysis = result.analysis;
-        setStatusMessage(`Shelf analysis synced via local server ${result.mode}.`);
-      } catch (error) {
-        analysis = createMockShelfAnalysis({ caption: thread.caption, photoUri: thread.localImageUri });
-        setStatusMessage(error instanceof Error ? error.message : "Local server sync failed; using mock shelf analysis.");
-      }
-    } else {
-      analysis = createMockShelfAnalysis({ caption: thread.caption, photoUri: thread.localImageUri });
-      setStatusMessage("Mock shelf analysis saved locally.");
-    }
-    const updatedThread: ShelfThreadRecord = { ...thread, status: "analyzed", analysis };
+    analysis = createMockShelfAnalysis({ caption: thread.caption, photoUri: thread.localImageUri });
+    const updatedThread: ShelfThreadRecord = { ...thread, status: "analyzed", analysis, analysisSource: "mock" };
     const db = await openLocalStore();
     await saveShelfThread(db, updatedThread);
     await refreshShelfThreads();
+    setStatusMessage("Mock shelf analysis saved locally.");
   }
 
   async function handleDeleteShelfThread(threadId: string) {
@@ -595,6 +625,7 @@ export default function App() {
             <View key={thread.id} style={styles.timelineRow}>
               <Text style={styles.timelineLabel}>{thread.caption || "Queued shelf photo"}</Text>
               <Text style={styles.muted}>{thread.status} | {formatDateTime(thread.createdAt)}</Text>
+              <Text style={styles.muted}>Analysis source: {thread.analysisSource ?? "none"}</Text>
               <Text style={styles.muted}>Local image: {thread.localImageUri}</Text>
               {thread.analysis ? <Text style={styles.muted}>{formatShelfAnalysisSummary(thread.analysis)}</Text> : <Text style={styles.muted}>No analysis yet. The photo remains in the local queue.</Text>}
               <View style={styles.row}>

@@ -19,7 +19,7 @@ function buildEndpoint(baseUrl: string, path: string) {
 
 export async function sendShelfAnalysisToLocalServer(
   settings: LocalServerSettings,
-  payload: { caption?: string; photoUri: string; candidate?: unknown },
+  payload: { caption?: string; photoDataUrl?: string; candidate?: unknown },
   mode: ShelfServerMode
 ): Promise<ShelfServerResult> {
   const path =
@@ -35,8 +35,8 @@ export async function sendShelfAnalysisToLocalServer(
       mode === "validate"
         ? payload.candidate ?? payload
         : mode === "gpt"
-          ? { candidate: payload.candidate }
-          : { caption: payload.caption, photoUri: payload.photoUri }
+          ? { caption: payload.caption, photoDataUrl: payload.photoDataUrl }
+          : { caption: payload.caption }
     )
   });
 

@@ -84,6 +84,7 @@ export type ShelfThreadRecord = {
   caption?: string;
   status: ShelfThreadStatus;
   analysis?: ShelfAnalysis;
+  analysisSource?: "mock" | "local-server";
 };
 
 export async function getOrCreateUserProfile(db: SQLite.SQLiteDatabase, timezone = "Pacific/Auckland"): Promise<UserProfile> {
@@ -225,7 +226,8 @@ export async function saveShelfThread(db: SQLite.SQLiteDatabase, thread: ShelfTh
     JSON.stringify({
       caption: thread.caption ?? null,
       status: thread.status,
-      analysis: thread.analysis ?? null
+      analysis: thread.analysis ?? null,
+      analysisSource: thread.analysisSource ?? null
     })
   );
 }
@@ -239,14 +241,15 @@ export async function listShelfThreads(db: SQLite.SQLiteDatabase, limit = 50): P
   }>("SELECT id, created_at, local_image_uri, payload_json FROM shelf_messages ORDER BY created_at DESC LIMIT ?", limit);
 
   return rows.map((row) => {
-    const payload = row.payload_json ? JSON.parse(row.payload_json) as { caption?: string | null; status?: ShelfThreadStatus; analysis?: ShelfAnalysis | null } : {};
+    const payload = row.payload_json ? JSON.parse(row.payload_json) as { caption?: string | null; status?: ShelfThreadStatus; analysis?: ShelfAnalysis | null; analysisSource?: "mock" | "local-server" | null } : {};
     return {
       id: row.id,
       createdAt: row.created_at,
       localImageUri: row.local_image_uri ?? "",
       caption: payload.caption ?? undefined,
       status: payload.status ?? "queued",
-      analysis: payload.analysis ?? undefined
+      analysis: payload.analysis ?? undefined,
+      analysisSource: payload.analysisSource ?? undefined
     };
   });
 }

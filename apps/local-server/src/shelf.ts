@@ -1,6 +1,6 @@
 import type { Request, Response } from "express";
 import { ShelfAnalysisSchema, createMockShelfAnalysis } from "../../../packages/shared/src/shelf-analysis.js";
-import { isOpenAiConfigured, validateGptShelfResponse } from "./gpt4o.js";
+import { generateGptShelfAnalysis, isOpenAiConfigured } from "./gpt4o.js";
 import { writeAuditEvent } from "./audit.js";
 
 function sendAudit(req: Request, outcome: "validated" | "failed", statusCode: number, detail: string) {
@@ -44,7 +44,13 @@ export async function handleShelfGpt(req: Request, res: Response) {
   }
 
   try {
-    const candidate = await validateGptShelfResponse(req.body?.candidate);
+    const caption = typeof req.body?.caption === "string" ? req.body.caption : undefined;
+    const photoDataUrl = typeof req.body?.photoDataUrl === "string" ? req.body.photoDataUrl : "";
+    if (!photoDataUrl) {
+      sendAudit(req, "failed", 422, "GPT shelf analysis request was missing an image payload.");
+      return res.status(422).json({ error: "MISSING_IMAGE", message: "Provide a base64 data URL for the shelf photo." });
+    }
+    const candidate = await generateGptShelfAnalysis({ caption, photoDataUrl });
     sendAudit(req, "validated", 200, "GPT shelf analysis validated locally.");
     return res.json(candidate);
   } catch (error) {
