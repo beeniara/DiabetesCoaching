@@ -1,5 +1,6 @@
 import * as SQLite from "expo-sqlite";
 import type { HealthEvent, GlucoseEvent, MedicationEvent } from "../../../packages/shared/src/health-events";
+import type { ShelfAnalysis } from "../../../packages/shared/src/shelf-analysis";
 import { createDefaultUserProfile, markConsentAccepted, type UserProfile } from "../../../packages/shared/src/profile";
 import { type MedicationPlan } from "../../../packages/shared/src/medication-plans";
 import { summarizeTimeline } from "../../../packages/shared/src/timeline";
@@ -73,6 +74,17 @@ export async function openLocalStore() {
   `);
   return db;
 }
+
+export type ShelfThreadStatus = "queued" | "analyzed";
+
+export type ShelfThreadRecord = {
+  id: string;
+  createdAt: string;
+  localImageUri: string;
+  caption?: string;
+  status: ShelfThreadStatus;
+  analysis?: ShelfAnalysis;
+};
 
 export async function getOrCreateUserProfile(db: SQLite.SQLiteDatabase, timezone = "Pacific/Auckland"): Promise<UserProfile> {
   const rows = await db.getAllAsync<{
@@ -200,4 +212,45 @@ export async function saveMedicationPlan(db: SQLite.SQLiteDatabase, plan: Medica
     plan.updatedAt,
     plan.lastScheduledAt ?? null
   );
+}
+
+export async function saveShelfThread(db: SQLite.SQLiteDatabase, thread: ShelfThreadRecord) {
+  await db.runAsync(
+    `INSERT OR REPLACE INTO shelf_messages (id, created_at, role, local_image_uri, payload_json)
+     VALUES (?, ?, ?, ?, ?)`,
+    thread.id,
+    thread.createdAt,
+    "thread",
+    thread.localImageUri,
+    JSON.stringify({
+      caption: thread.caption ?? null,
+      status: thread.status,
+      analysis: thread.analysis ?? null
+    })
+  );
+}
+
+export async function listShelfThreads(db: SQLite.SQLiteDatabase, limit = 50): Promise<ShelfThreadRecord[]> {
+  const rows = await db.getAllAsync<{
+    id: string;
+    created_at: string;
+    local_image_uri: string | null;
+    payload_json: string | null;
+  }>("SELECT id, created_at, local_image_uri, payload_json FROM shelf_messages ORDER BY created_at DESC LIMIT ?", limit);
+
+  return rows.map((row) => {
+    const payload = row.payload_json ? JSON.parse(row.payload_json) as { caption?: string | null; status?: ShelfThreadStatus; analysis?: ShelfAnalysis | null } : {};
+    return {
+      id: row.id,
+      createdAt: row.created_at,
+      localImageUri: row.local_image_uri ?? "",
+      caption: payload.caption ?? undefined,
+      status: payload.status ?? "queued",
+      analysis: payload.analysis ?? undefined
+    };
+  });
+}
+
+export async function deleteShelfThread(db: SQLite.SQLiteDatabase, id: string) {
+  await db.runAsync("DELETE FROM shelf_messages WHERE id = ?", id);
 }

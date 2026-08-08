@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import * as ImagePicker from "expo-image-picker";
 import { DEFAULT_CARE_TARGETS, type GlucoseContext } from "../../packages/shared/src/clinical";
 import { buildClinicianReviewSummary, formatClinicianReviewSummary } from "../../packages/shared/src/glucose-review";
 import { createMedicationPlan, describeMedicationPlanStatus, medicationPlanNeedsReschedule, type MedicationPlan } from "../../packages/shared/src/medication-plans";
 import { createDefaultUserProfile, type UserProfile } from "../../packages/shared/src/profile";
-import { addGlucoseEntry, addMedicationEntry, acceptConsent, getOrCreateUserProfile, listHealthEvents, listMedicationPlans, openLocalStore, saveMedicationPlan, saveUserProfile } from "./src/storage";
+import { createMockShelfAnalysis, formatShelfAnalysisSummary } from "../../packages/shared/src/shelf-analysis";
+import { addGlucoseEntry, addMedicationEntry, acceptConsent, deleteShelfThread, getOrCreateUserProfile, listHealthEvents, listMedicationPlans, listShelfThreads, openLocalStore, saveMedicationPlan, saveShelfThread, saveUserProfile, type ShelfThreadRecord } from "./src/storage";
 import { getMedicationNotificationCapability, reconcileMedicationReminders, syncMedicationReminderWithOptions } from "./src/reminders";
 import { formatTimelineLabel, summarizeTimeline } from "../../packages/shared/src/timeline";
 import { parseHealthEvent, safeGlucoseDisplay, type GlucoseCompartment, type HealthEvent, type MedicationEvent } from "../../packages/shared/src/health-events";
@@ -50,10 +52,12 @@ export default function App() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [events, setEvents] = useState<HealthEvent[]>([]);
   const [plans, setPlans] = useState<MedicationPlan[]>([]);
+  const [shelfThreads, setShelfThreads] = useState<ShelfThreadRecord[]>([]);
   const [statusMessage, setStatusMessage] = useState("Loading local data...");
   const [capability, setCapability] = useState<{ granted: boolean; canSchedule: boolean; exactAlarmNote: string } | null>(null);
   const [reviewContext, setReviewContext] = useState<GlucoseContext>("postprandial");
   const [reviewExport, setReviewExport] = useState("");
+  const [shelfCaption, setShelfCaption] = useState("");
   const [inputs, setInputs] = useState<InputState>(initialInputs);
 
   useEffect(() => {
@@ -64,6 +68,7 @@ export default function App() {
         const loadedProfile = await getOrCreateUserProfile(db, "Pacific/Auckland");
         const loadedEvents = await listHealthEvents(db, 200);
         const loadedPlans = await listMedicationPlans(db);
+        const loadedShelfThreads = await listShelfThreads(db, 50);
         const notificationCapability = await getMedicationNotificationCapability();
         const reconciledPlans = await reconcileMedicationReminders(loadedPlans, loadedProfile.timezone, notificationCapability.granted, false);
 
@@ -75,6 +80,7 @@ export default function App() {
         setProfile(loadedProfile);
         setEvents(loadedEvents);
         setPlans(reconciledPlans.plans);
+        setShelfThreads(loadedShelfThreads);
         setCapability(notificationCapability);
         setStatusMessage(reconciledPlans.issues.length > 0 ? reconciledPlans.issues[0] : "Local profile, timeline, and reminder plans loaded.");
       } catch (error) {
@@ -108,6 +114,11 @@ export default function App() {
     if (reconciledPlans.issues.length > 0) {
       setStatusMessage(reconciledPlans.issues[0]);
     }
+  }
+
+  async function refreshShelfThreads() {
+    const db = await openLocalStore();
+    setShelfThreads(await listShelfThreads(db, 50));
   }
 
   async function handleAcceptConsent() {
@@ -230,6 +241,59 @@ export default function App() {
     const exportText = formatClinicianReviewSummary(clinicianReview);
     setReviewExport(exportText);
     setStatusMessage("Clinician review summary generated locally.");
+  }
+
+  async function handleCaptureShelfPhoto() {
+    if (!profile || profile.consentState !== "accepted") {
+      setStatusMessage("Accept consent before capturing shelf photos.");
+      return;
+    }
+
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    if (!permission.granted) {
+      setStatusMessage("Camera permission is required for shelf photo capture.");
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      quality: 0.75,
+      allowsEditing: false
+    });
+
+    if (result.canceled || result.assets.length === 0) {
+      setStatusMessage("Shelf photo capture canceled.");
+      return;
+    }
+
+    const asset = result.assets[0];
+    const db = await openLocalStore();
+    const thread: ShelfThreadRecord = {
+      id: createHealthEventId("shelf"),
+      createdAt: new Date().toISOString(),
+      localImageUri: asset.uri,
+      caption: shelfCaption.trim() || undefined,
+      status: "queued"
+    };
+    await saveShelfThread(db, thread);
+    await refreshShelfThreads();
+    setShelfCaption("");
+    setStatusMessage("Shelf photo queued locally.");
+  }
+
+  async function handleAnalyzeShelfThread(thread: ShelfThreadRecord) {
+    const analysis = createMockShelfAnalysis({ caption: thread.caption, photoUri: thread.localImageUri });
+    const updatedThread: ShelfThreadRecord = { ...thread, status: "analyzed", analysis };
+    const db = await openLocalStore();
+    await saveShelfThread(db, updatedThread);
+    await refreshShelfThreads();
+    setStatusMessage("Mock shelf analysis saved locally.");
+  }
+
+  async function handleDeleteShelfThread(threadId: string) {
+    const db = await openLocalStore();
+    await deleteShelfThread(db, threadId);
+    await refreshShelfThreads();
+    setStatusMessage("Shelf thread deleted locally.");
   }
 
   const timeline = events.length > 0 ? dbState : summarizeTimeline(fallbackEvents);
@@ -410,6 +474,52 @@ export default function App() {
             style={styles.exportBox}
             placeholderTextColor="#80918A"
           />
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Shelf photo queue</Text>
+          <Text style={styles.bodyText}>Capture a shelf photo, keep it local, and attach a validated mock analysis only when you choose.</Text>
+          <View style={styles.fieldGroup}>
+            <Text style={styles.label}>Caption</Text>
+            <TextInput
+              value={shelfCaption}
+              onChangeText={setShelfCaption}
+              style={styles.input}
+              placeholder="Optional shelf note"
+              placeholderTextColor="#80918A"
+            />
+          </View>
+          <View style={styles.row}>
+            <Pressable accessibilityRole="button" style={styles.primaryButton} onPress={handleCaptureShelfPhoto}>
+              <Text style={styles.primaryButtonText}>Capture shelf photo</Text>
+            </Pressable>
+            <Pressable accessibilityRole="button" style={styles.secondaryButton} onPress={refreshShelfThreads}>
+              <Text style={styles.secondaryButtonText}>Refresh queue</Text>
+            </Pressable>
+          </View>
+          <Text style={styles.muted}>Photos stay local unless you choose to move them elsewhere. The mock analysis is validated before display.</Text>
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Shelf history</Text>
+          {shelfThreads.length > 0 ? shelfThreads.map((thread) => (
+            <View key={thread.id} style={styles.timelineRow}>
+              <Text style={styles.timelineLabel}>{thread.caption || "Queued shelf photo"}</Text>
+              <Text style={styles.muted}>{thread.status} | {formatDateTime(thread.createdAt)}</Text>
+              <Text style={styles.muted}>Local image: {thread.localImageUri}</Text>
+              {thread.analysis ? <Text style={styles.muted}>{formatShelfAnalysisSummary(thread.analysis)}</Text> : <Text style={styles.muted}>No analysis yet. The photo remains in the local queue.</Text>}
+              <View style={styles.row}>
+                {thread.status !== "analyzed" ? (
+                  <Pressable accessibilityRole="button" style={styles.secondaryButton} onPress={() => handleAnalyzeShelfThread(thread)}>
+                    <Text style={styles.secondaryButtonText}>Generate mock analysis</Text>
+                  </Pressable>
+                ) : null}
+                <Pressable accessibilityRole="button" style={styles.secondaryButton} onPress={() => handleDeleteShelfThread(thread.id)}>
+                  <Text style={styles.secondaryButtonText}>Delete thread</Text>
+                </Pressable>
+              </View>
+            </View>
+          )) : <Text style={styles.muted}>No shelf photos queued yet.</Text>}
         </View>
 
         <View style={styles.card}>

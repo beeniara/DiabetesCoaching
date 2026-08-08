@@ -27,6 +27,7 @@ The grocery experience is a chat thread: take/select shelf photo → local pendi
 - Built the Phase 1 mobile shell with local consent handling, manual glucose and medication logging, a unified timeline, freshness labels, and reminder scheduling controls.
 - Added Phase 2 medication-plan storage, silent launch-time reconciliation, explicit reminder resync controls, and persisted plan status labels.
 - Added Phase 3 glucose trend helpers, target-context review controls, and a local clinician-review export snapshot.
+- Added Phase 4 shelf-photo capture, queued local history, deletion controls, and validated mock shelf-analysis responses.
 
 1. Establish app navigation, local schema/migrations, consent, safety copy, and accessibility baseline.
 2. Implement medication plan entry and native offline schedules. Reconcile schedules after edits, app launches, and timezone changes; test Android/iOS behaviour on physical devices.
