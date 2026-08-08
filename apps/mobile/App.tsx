@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { DEFAULT_CARE_TARGETS } from "../../packages/shared/src/clinical";
+import { createMedicationPlan, describeMedicationPlanStatus, medicationPlanNeedsReschedule, type MedicationPlan } from "../../packages/shared/src/medication-plans";
 import { createDefaultUserProfile, type UserProfile } from "../../packages/shared/src/profile";
-import { addGlucoseEntry, addMedicationEntry, acceptConsent, getOrCreateUserProfile, listHealthEvents, openLocalStore, saveUserProfile } from "./src/storage";
-import { getMedicationNotificationCapability, scheduleMedicationReminder } from "./src/reminders";
+import { addGlucoseEntry, addMedicationEntry, acceptConsent, getOrCreateUserProfile, listHealthEvents, listMedicationPlans, openLocalStore, saveMedicationPlan, saveUserProfile } from "./src/storage";
+import { getMedicationNotificationCapability, reconcileMedicationReminders, syncMedicationReminderWithOptions } from "./src/reminders";
 import { formatTimelineLabel, summarizeTimeline } from "../../packages/shared/src/timeline";
 import { parseHealthEvent, safeGlucoseDisplay, type GlucoseCompartment, type HealthEvent, type MedicationEvent } from "../../packages/shared/src/health-events";
 import { mockBleGlucoseMeasurement, mockImuExercise, mockMealVision } from "../../packages/shared/src/mocks";
@@ -47,6 +48,7 @@ function createHealthEventId(prefix: string) {
 export default function App() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [events, setEvents] = useState<HealthEvent[]>([]);
+  const [plans, setPlans] = useState<MedicationPlan[]>([]);
   const [statusMessage, setStatusMessage] = useState("Loading local data...");
   const [capability, setCapability] = useState<{ granted: boolean; canSchedule: boolean; exactAlarmNote: string } | null>(null);
   const [inputs, setInputs] = useState<InputState>(initialInputs);
@@ -58,13 +60,20 @@ export default function App() {
         const db = await openLocalStore();
         const loadedProfile = await getOrCreateUserProfile(db, "Pacific/Auckland");
         const loadedEvents = await listHealthEvents(db, 200);
+        const loadedPlans = await listMedicationPlans(db);
         const notificationCapability = await getMedicationNotificationCapability();
+        const reconciledPlans = await reconcileMedicationReminders(loadedPlans, loadedProfile.timezone, notificationCapability.granted, false);
+
+        for (const plan of reconciledPlans.plans) {
+          await saveMedicationPlan(db, plan);
+        }
 
         if (cancelled) return;
         setProfile(loadedProfile);
         setEvents(loadedEvents);
+        setPlans(reconciledPlans.plans);
         setCapability(notificationCapability);
-        setStatusMessage("Local profile and timeline loaded.");
+        setStatusMessage(reconciledPlans.issues.length > 0 ? reconciledPlans.issues[0] : "Local profile, timeline, and reminder plans loaded.");
       } catch (error) {
         if (!cancelled) setStatusMessage(error instanceof Error ? error.message : "Failed to load local data.");
       }
@@ -82,6 +91,20 @@ export default function App() {
   async function refreshTimeline() {
     const db = await openLocalStore();
     setEvents(await listHealthEvents(db, 200));
+  }
+
+  async function refreshMedicationPlans() {
+    if (!profile) return;
+    const db = await openLocalStore();
+    const loadedPlans = await listMedicationPlans(db);
+    const reconciledPlans = await reconcileMedicationReminders(loadedPlans, profile.timezone, capability?.granted ?? false, false);
+    for (const plan of reconciledPlans.plans) {
+      await saveMedicationPlan(db, plan);
+    }
+    setPlans(reconciledPlans.plans);
+    if (reconciledPlans.issues.length > 0) {
+      setStatusMessage(reconciledPlans.issues[0]);
+    }
   }
 
   async function handleAcceptConsent() {
@@ -169,22 +192,34 @@ export default function App() {
     setStatusMessage("Medication event saved locally.");
   }
 
-  async function handleScheduleReminder() {
+  async function handleSaveReminderPlan() {
     const hour = Number.parseInt(inputs.reminderHour, 10);
     const minute = Number.parseInt(inputs.reminderMinute, 10);
     if (!inputs.medicationName.trim()) {
-      setStatusMessage("Enter the medication name before scheduling a reminder.");
+      setStatusMessage("Enter the medication name before saving a reminder plan.");
       return;
     }
     if (!Number.isInteger(hour) || hour < 0 || hour > 23 || !Number.isInteger(minute) || minute < 0 || minute > 59) {
       setStatusMessage("Enter a valid reminder time.");
       return;
     }
+    if (!profile) return;
     try {
-      await scheduleMedicationReminder(inputs.medicationName.trim(), hour, minute);
-      setStatusMessage("Medication reminder scheduled on the device.");
+      const plan = createMedicationPlan({
+        id: createHealthEventId("plan"),
+        userId: profile.id,
+        medicationName: inputs.medicationName.trim(),
+        reminderHour: hour,
+        reminderMinute: minute,
+        timezone: profile.timezone
+      });
+      const syncedPlan = await syncMedicationReminderWithOptions(plan, profile.timezone, { promptForPermission: true });
+      const db = await openLocalStore();
+      await saveMedicationPlan(db, syncedPlan);
+      setPlans((current) => [syncedPlan, ...current.filter((item) => item.id !== syncedPlan.id)]);
+      setStatusMessage("Medication reminder plan saved and synced.");
     } catch (error) {
-      setStatusMessage(error instanceof Error ? error.message : "Unable to schedule reminder.");
+      setStatusMessage(error instanceof Error ? error.message : "Unable to save reminder plan.");
     }
   }
 
@@ -281,15 +316,39 @@ export default function App() {
             <TextInput value={inputs.medicationDoseLabel} onChangeText={(value) => setInputs((current) => ({ ...current, medicationDoseLabel: value }))} style={styles.input} placeholder="As prescribed" placeholderTextColor="#80918A" />
           </View>
           <View style={styles.row}>
+            <View style={styles.flexOne}>
+              <Text style={styles.label}>Reminder hour</Text>
+              <TextInput value={inputs.reminderHour} onChangeText={(value) => setInputs((current) => ({ ...current, reminderHour: value }))} keyboardType="number-pad" style={styles.input} placeholder="8" placeholderTextColor="#80918A" />
+            </View>
+            <View style={styles.flexOne}>
+              <Text style={styles.label}>Reminder minute</Text>
+              <TextInput value={inputs.reminderMinute} onChangeText={(value) => setInputs((current) => ({ ...current, reminderMinute: value }))} keyboardType="number-pad" style={styles.input} placeholder="0" placeholderTextColor="#80918A" />
+            </View>
+          </View>
+          <View style={styles.row}>
             <Pressable accessibilityRole="button" style={styles.primaryButton} onPress={handleSaveMedication}>
               <Text style={styles.primaryButtonText}>Save medication</Text>
             </Pressable>
-            <Pressable accessibilityRole="button" style={styles.secondaryButton} onPress={handleScheduleReminder}>
-              <Text style={styles.secondaryButtonText}>Schedule reminder</Text>
+            <Pressable accessibilityRole="button" style={styles.secondaryButton} onPress={handleSaveReminderPlan}>
+              <Text style={styles.secondaryButtonText}>Save reminder plan</Text>
+            </Pressable>
+            <Pressable accessibilityRole="button" style={styles.secondaryButton} onPress={refreshMedicationPlans}>
+              <Text style={styles.secondaryButtonText}>Resync reminders</Text>
             </Pressable>
           </View>
           <Text style={styles.muted}>{capability ? capability.exactAlarmNote : "Notification capability is being checked."}</Text>
           <Text style={styles.muted}>Permission: {capability?.granted ? "granted" : "not granted yet"}</Text>
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Reminder plans</Text>
+          {plans.length > 0 ? plans.map((plan) => (
+            <View key={plan.id} style={styles.timelineRow}>
+              <Text style={styles.timelineLabel}>{plan.medicationName} at {plan.reminderHour.toString().padStart(2, "0")}:{plan.reminderMinute.toString().padStart(2, "0")}</Text>
+              <Text style={styles.muted}>{describeMedicationPlanStatus(plan, profile?.timezone ?? plan.timezone)}</Text>
+              <Text style={styles.muted}>Needs sync: {medicationPlanNeedsReschedule(plan, profile?.timezone ?? plan.timezone) ? "yes" : "no"} | status: {plan.scheduleStatus}</Text>
+            </View>
+          )) : <Text style={styles.muted}>No reminder plans saved yet.</Text>}
         </View>
 
         <View style={styles.card}>
@@ -357,6 +416,7 @@ const styles = StyleSheet.create({
   input: { borderWidth: 1, borderColor: colors.border, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, color: colors.text, backgroundColor: "#FBFCFB" },
   row: { flexDirection: "row", gap: 10, flexWrap: "wrap" },
   rowWrap: { flexDirection: "row", gap: 8, flexWrap: "wrap" },
+  flexOne: { flex: 1, minWidth: 120 },
   primaryButton: { backgroundColor: colors.accent, paddingVertical: 12, paddingHorizontal: 14, borderRadius: 12, minHeight: 44, justifyContent: "center" },
   primaryButtonText: { color: "#FFFFFF", fontWeight: "800" },
   secondaryButton: { backgroundColor: colors.accentSoft, paddingVertical: 12, paddingHorizontal: 14, borderRadius: 12, minHeight: 44, justifyContent: "center" },

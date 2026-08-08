@@ -1,6 +1,7 @@
 import * as SQLite from "expo-sqlite";
 import type { HealthEvent, GlucoseEvent, MedicationEvent } from "../../../packages/shared/src/health-events";
 import { createDefaultUserProfile, markConsentAccepted, type UserProfile } from "../../../packages/shared/src/profile";
+import { type MedicationPlan } from "../../../packages/shared/src/medication-plans";
 import { summarizeTimeline } from "../../../packages/shared/src/timeline";
 
 // The device database is the source of truth for the first release.
@@ -48,6 +49,19 @@ export async function openLocalStore() {
       minute INTEGER NOT NULL,
       notification_id TEXT,
       enabled INTEGER NOT NULL DEFAULT 1
+    );
+    CREATE TABLE IF NOT EXISTS medication_plans (
+      id TEXT PRIMARY KEY NOT NULL,
+      user_id TEXT NOT NULL,
+      medication_name TEXT NOT NULL,
+      reminder_hour INTEGER NOT NULL,
+      reminder_minute INTEGER NOT NULL,
+      timezone TEXT NOT NULL,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      notification_id TEXT,
+      schedule_status TEXT NOT NULL DEFAULT 'pending',
+      updated_at TEXT NOT NULL,
+      last_scheduled_at TEXT
     );
     CREATE TABLE IF NOT EXISTS shelf_messages (
       id TEXT PRIMARY KEY NOT NULL,
@@ -135,4 +149,55 @@ export async function addMedicationEntry(db: SQLite.SQLiteDatabase, event: Medic
 export async function getTimelineSummary(db: SQLite.SQLiteDatabase) {
   const events = await listHealthEvents(db, 100);
   return summarizeTimeline(events);
+}
+
+export async function listMedicationPlans(db: SQLite.SQLiteDatabase): Promise<MedicationPlan[]> {
+  const rows = await db.getAllAsync<{
+    id: string;
+    user_id: string;
+    medication_name: string;
+    reminder_hour: number;
+    reminder_minute: number;
+    timezone: string;
+    enabled: number;
+    notification_id: string | null;
+    schedule_status: MedicationPlan["scheduleStatus"];
+    updated_at: string;
+    last_scheduled_at: string | null;
+  }>(
+    `SELECT id, user_id, medication_name, reminder_hour, reminder_minute, timezone, enabled, notification_id, schedule_status, updated_at, last_scheduled_at
+     FROM medication_plans
+     ORDER BY reminder_hour ASC, reminder_minute ASC, medication_name ASC`
+  );
+  return rows.map((row) => ({
+    id: row.id,
+    userId: row.user_id,
+    medicationName: row.medication_name,
+    reminderHour: row.reminder_hour,
+    reminderMinute: row.reminder_minute,
+    timezone: row.timezone,
+    enabled: row.enabled === 1,
+    notificationId: row.notification_id ?? undefined,
+    scheduleStatus: row.schedule_status,
+    updatedAt: row.updated_at,
+    lastScheduledAt: row.last_scheduled_at ?? undefined
+  }));
+}
+
+export async function saveMedicationPlan(db: SQLite.SQLiteDatabase, plan: MedicationPlan) {
+  await db.runAsync(
+    `INSERT OR REPLACE INTO medication_plans (id, user_id, medication_name, reminder_hour, reminder_minute, timezone, enabled, notification_id, schedule_status, updated_at, last_scheduled_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    plan.id,
+    plan.userId,
+    plan.medicationName,
+    plan.reminderHour,
+    plan.reminderMinute,
+    plan.timezone,
+    plan.enabled ? 1 : 0,
+    plan.notificationId ?? null,
+    plan.scheduleStatus,
+    plan.updatedAt,
+    plan.lastScheduledAt ?? null
+  );
 }

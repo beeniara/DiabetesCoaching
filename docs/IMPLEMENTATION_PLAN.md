@@ -25,6 +25,7 @@ The grocery experience is a chat thread: take/select shelf photo → local pendi
 - Added notification permission/capability reporting and Android exact-alarm permission declaration. Exact delivery remains platform-dependent and must be verified on physical devices.
 - Added shared unit tests for the new event validation, merge behavior, profile state, and timeline summaries.
 - Built the Phase 1 mobile shell with local consent handling, manual glucose and medication logging, a unified timeline, freshness labels, and reminder scheduling controls.
+- Added Phase 2 medication-plan storage, silent launch-time reconciliation, explicit reminder resync controls, and persisted plan status labels.
 
 1. Establish app navigation, local schema/migrations, consent, safety copy, and accessibility baseline.
 2. Implement medication plan entry and native offline schedules. Reconcile schedules after edits, app launches, and timezone changes; test Android/iOS behaviour on physical devices.
