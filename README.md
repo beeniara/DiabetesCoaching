@@ -39,3 +39,4 @@ npm run dev:server
 ```
 
 See [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) for decisions, scope, and the staged build plan.
+# DiabetesCoaching
