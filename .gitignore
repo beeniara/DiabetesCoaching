@@ -1,5 +1,12 @@
 node_modules/
 .expo/
+**/.expo/
+.expo-smoke/
+**/.expo-smoke/
 dist/
+.DS_Store
 .env
+.env.*
+!.env.example
+*.log
 *.db

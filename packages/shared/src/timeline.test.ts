@@ -14,4 +14,11 @@ describe("timeline helpers", () => {
     expect(formatTimelineLabel(mockMealVision())).toContain("Meal");
     expect(formatTimelineLabel(mockImuExercise())).toContain("Cycling");
   });
+
+  it("distinguishes stale real data from current data", () => {
+    const event = { ...mockDelayedCloudCgm(), quality: "valid" as const, sensorDelayMinutes: 0 };
+    const summary = summarizeTimeline([event], new Date("2026-08-08T14:30:00+12:00"));
+    expect(summary.freshness).toBe("stale");
+    expect(summary.warning).toContain("hours ago");
+  });
 });

@@ -1,5 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
-import { writeAuditEvent } from "./audit.js";
+import { timingSafeEqual } from "node:crypto";
+import { recordAuditEvent } from "./audit.js";
 
 function readPresentedToken(req: Request) {
   const header = req.header("authorization");
@@ -9,28 +10,31 @@ function readPresentedToken(req: Request) {
 
 export function requireLocalServerAuth(req: Request, res: Response, next: NextFunction) {
   const configuredToken = process.env.LOCAL_SERVER_API_KEY?.trim();
-  const requestId = req.header("x-request-id") ?? "unknown";
+  const requestId = typeof res.locals.requestId === "string" ? res.locals.requestId : "unknown";
 
-  if (!configuredToken) {
+  if (!configuredToken || configuredToken.length < 24) {
     res.setHeader("x-local-server-auth", "disabled");
-    void writeAuditEvent({
+    recordAuditEvent({
       at: new Date().toISOString(),
       route: req.path,
       method: req.method,
       outcome: "blocked",
       requestId,
       statusCode: 503,
-      detail: "LOCAL_SERVER_API_KEY is not configured."
+      detail: "LOCAL_SERVER_API_KEY is missing or too short."
     });
     return res.status(503).json({
       error: "AUTH_NOT_CONFIGURED",
-      message: "Set LOCAL_SERVER_API_KEY on the local server before using protected endpoints."
+      message: "Set LOCAL_SERVER_API_KEY to a random token of at least 24 characters before using protected endpoints."
     });
   }
 
   const presentedToken = readPresentedToken(req);
-  if (!presentedToken || presentedToken !== configuredToken) {
-    void writeAuditEvent({
+  const presentedBuffer = Buffer.from(presentedToken ?? "");
+  const configuredBuffer = Buffer.from(configuredToken);
+  const tokenMatches = presentedBuffer.length === configuredBuffer.length && timingSafeEqual(presentedBuffer, configuredBuffer);
+  if (!tokenMatches) {
+    recordAuditEvent({
       at: new Date().toISOString(),
       route: req.path,
       method: req.method,

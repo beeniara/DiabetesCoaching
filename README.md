@@ -1,42 +1,90 @@
 # Diabetes Coaching App
 
-An Auckland, New Zealand-focused Type 2 diabetes coaching companion. It supports self-management and clinician conversations; it does not diagnose conditions, change medicines, or manage emergencies.
+Koru Companion is an Auckland-focused Type 2 diabetes wellness and decision-support app. It supports personal tracking and clinician conversations; it does not diagnose, calculate doses, change medication, or manage emergencies.
 
-## Starter architecture
+The mobile app works offline for its core features. Personal records are stored locally by default, and an optional self-hosted Express service can validate or analyse shelf photos when the user explicitly requests it.
 
-- `apps/mobile`: Expo / React Native app. Personal data, reminder schedules, and queued grocery scans stay on-device by default.
-- `apps/local-server`: Node / Express server intended to run on the user's local server. It owns optional external AI calls and never embeds an API key in the app.
-- `packages/shared`: deterministic clinical-context rules and strict data contracts used by both sides.
+## What works
 
-## Safety boundary
+- Local profile, explicit consent, consent revocation, and complete local-data deletion.
+- Configurable clinician-reviewed glucose target context.
+- Manual glucose, meal, activity, and medication acknowledgement logging.
+- A unified quality-aware timeline with freshness, delayed-data, conflict, and interstitial-fluid lag labels.
+- Local medication plans, notifications, Taken/Skipped/Snooze actions, permission status, and schedule reconciliation.
+- Clinician-review summary generation and explicit operating-system sharing.
+- BLE GATT glucose (`0x1808` / `0x2A18`), delayed/rate-limited cloud, volumetric meal, and IMU exercise simulations through the same normalization and synchronization path intended for future adapters.
+- Local shelf-photo capture/selection, app-owned storage, retryable queue, explicit deletion, and schema-validated mock or server analysis.
+- Authenticated optional local server with bounded requests, explicit CORS, rate limiting, redacted audit records, strict GPT output validation, and fail-closed configuration.
 
-All targets are clinician-reviewable and configurable. Guidance describes context only, never a dosage or treatment change. The app must always show emergency/urgent-care escalation guidance when a user reports concerning symptoms or a result requires prompt review. It must not claim to replace a GP, diabetes nurse, pharmacist, Healthline, or emergency services.
+Simulated device and cloud integrations are test harnesses, not vendor integrations. See [Known risks and release gates](docs/KNOWN_RISKS.md) before any real-world deployment.
 
-## Initial guidance context (not an individual care plan)
+## Architecture
 
-Default starting context: fasting glucose 6.0–8.0 mmol/L, postprandial glucose under 10.0 mmol/L, and HbA1c generally at or under 53 mmol/mol. These values are defaults only and must be confirmed or changed by the user's treating clinician.
+- `apps/mobile` — Expo/React Native client, SQLite source of truth, secure token storage, local notifications, photos, and sharing.
+- `apps/local-server` — optional Express service and the only component permitted to hold an external AI key.
+- `packages/shared` — Zod contracts, deterministic safety/context rules, synchronization, mocks, and Vitest tests.
+- `blueprintreasearch.md` — authoritative product and implementation blueprint.
 
-## Planned first release
+## Install and verify
 
-1. Local profile, configurable targets, manual glucose log, and exportable clinician-review summary.
-2. Deterministic device-scheduled medication reminders with acknowledgement; no medicine changes or missed-dose advice.
-3. Chat-like grocery-shelf photo workflow: capture, explain what is visible, and queue an optional review. Any GPT-4o response is validated against a strict JSON schema before display.
-4. Local-server-only integration boundary, audit-friendly records, protected analysis endpoints, and no cloud dependency for core daily tracking.
-
-## Local server notes
-
-- Set `LOCAL_SERVER_API_KEY` before using protected `/v1/*` routes.
-- Optional GPT-backed shelf analysis also requires `OPENAI_API_KEY`; otherwise the server fails closed with a clear 503 response.
-- Set `LOCAL_SERVER_AUDIT_LOG` to capture a redacted JSONL audit trail.
-
-## Run (after installing dependencies)
+Use a current Node.js LTS release and npm, then run from the repository root:
 
 ```sh
-npm install
+npm ci
+npm run check
+```
+
+`npm run check` runs every workspace test followed by strict TypeScript checks. The final Expo bundle smoke command used during development is:
+
+```sh
+npm exec --workspace @diabetes-coaching/mobile expo export -- --platform android --output-dir .expo-smoke
+```
+
+## Run the mobile app
+
+```sh
 npm run dev:mobile
-# in a separate terminal
+```
+
+Open the QR code with a supported development client or emulator. Camera, notification actions, exact-alarm behaviour, restart recovery, timezone changes, and background delivery must be accepted on physical devices; follow [the physical-device test plan](docs/PHYSICAL_DEVICE_TEST_PLAN.md).
+
+## Run the optional local server
+
+Protected routes require a random token of at least 24 characters. The server binds to loopback by default on port `8787`.
+
+PowerShell:
+
+```powershell
+$env:LOCAL_SERVER_API_KEY = "replace-with-a-long-random-secret"
 npm run dev:server
 ```
 
-See [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) for decisions, scope, and the staged build plan.
-# DiabetesCoaching
+macOS/Linux:
+
+```sh
+LOCAL_SERVER_API_KEY="replace-with-a-long-random-secret" npm run dev:server
+```
+
+For a physical phone on the same trusted network, set `HOST=0.0.0.0`, allow only the required firewall path, and configure the phone with the computer's LAN URL, such as `http://192.168.1.20:8787`. The development build permits local cleartext HTTP; a deployment beyond a trusted development LAN should use authenticated HTTPS or a VPN. Do not expose this service directly to the public internet.
+
+Optional server settings:
+
+- `LOCAL_SERVER_ALLOWED_ORIGINS` — comma-separated browser origins; no origin is allowed by default.
+- `LOCAL_SERVER_RATE_LIMIT_PER_MINUTE` — protected-route request limit; default `60`, minimum `10`.
+- `LOCAL_SERVER_AUDIT_LOG` — JSONL audit path. Records are redacted and never contain photos, bearer tokens, or health payloads.
+- `OPENAI_API_KEY` — enables explicit GPT shelf-photo analysis. Without it, that route returns `503` and the local queue stays retryable.
+- `OPENAI_SHELF_MODEL` — optional model override; defaults to `gpt-4o`.
+
+Save the URL and token in the mobile Settings tab and use **Test connection**. The token is stored with `expo-secure-store`, not in SQLite. Shelf images are sent only after the user selects **Analyze** in a configured server mode.
+
+## Local data and privacy
+
+Health events, plans, target context, profile/consent state, and shelf history live in SQLite. Shelf photos are copied into app-owned document storage. The server token lives in platform secure storage. The Settings tab can revoke consent, clear server settings, or delete all app-owned local data after confirmation.
+
+Mobile operating-system backups, device compromise, exports, screenshots, notification previews, and AI-provider retention require an explicit privacy assessment for the intended deployment. This repository contains no production identity system, clinical record integration, or remote backup.
+
+## Safety
+
+All values and trends are contextual estimates. Targets must be confirmed with the user's treating clinician. The app never supplies missed-dose advice or treatment instructions. In New Zealand, the UI offers `111` for emergencies and Healthline `0800 611 116` for free 24/7 health advice; approved release copy still requires local clinical review.
+
+The implementation status is in [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md), remaining external work is in [docs/WORK_ITEMS.md](docs/WORK_ITEMS.md), and material limitations are in [docs/KNOWN_RISKS.md](docs/KNOWN_RISKS.md).

@@ -19,4 +19,10 @@ describe("glucose review", () => {
     expect(trend.direction).toBe("limited");
     expect(trend.message).toContain("only one reading");
   });
+
+  it("does not claim a target result when no glucose exists", () => {
+    const summary = buildClinicianReviewSummary([mockMealVision()], "fasting", DEFAULT_CARE_TARGETS);
+    expect(summary.targetReview).toBeUndefined();
+    expect(formatClinicianReviewSummary(summary)).toContain("No glucose reading");
+  });
 });
