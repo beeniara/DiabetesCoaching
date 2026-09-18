@@ -58,6 +58,17 @@ Camera/library permission and storage behaviour still require physical-device ac
 - Verified shared and server tests, all strict TypeScript configurations, Expo dependency compatibility/config resolution, and an Android bundle export.
 - Verified the server process and authenticated mock route over loopback.
 
+### 7. Lifestyle coaching and wellbeing check-ins — complete in software
+
+- Added a deterministic coaching engine in `packages/shared/src/coaching.ts`: 7-day activity summary against user-set weekly goals (defaults 150 moderate-equivalent minutes and 2 strength days, per Health NZ, NZSSD, ADA, and WHO guidance), active-day streaks, non-shaming encouragement with a concrete next step, and an always-visible exercise safety note.
+- Added optional `category` (aerobic, resistance, flexibility, balance, everyday) to activity events with keyword inference for legacy entries; suspect or conflicting sessions are excluded from totals and the exclusion is shown.
+- Added a sourced library of general wellness tips (activity, nutrition, sleep, stress, foot care, checks, hydration, habits), a deterministic tip of the day, and targeted weekly suggestions driven by logged data.
+- Added wellbeing check-ins in `packages/shared/src/wellbeing.ts` (sleep, mood, stress, water, foot check, notes) with a 7-day review that surfaces short sleep, high stress, low mood, and missing foot checks as prompts to act or talk with the care team.
+- Added a "when to contact your care team" list built from Healthify and Diabetes NZ warning signs, routing to 111, Healthline, GP, or 1737 only; it never gives treatment steps.
+- Added SQLite migration v4 (`wellbeing_checkins`, `wellness_goals`), quick-pick activities, a Coach tab, and a home-screen weekly summary. All new data is included in full local deletion.
+
+Coaching copy is general wellness information with linked public sources. It has not been reviewed by a New Zealand clinician and is flagged as such in-app and in [KNOWN_RISKS.md](KNOWN_RISKS.md).
+
 ## Release decision
 
 The repository is a functioning software release candidate, not a clinically or operationally approved production release. The core app is usable offline and failure-safe within the documented boundary. Release to real users is blocked on the external gates in [WORK_ITEMS.md](WORK_ITEMS.md), especially physical-device notification/camera testing and independent New Zealand clinical, privacy, security, and accessibility review.

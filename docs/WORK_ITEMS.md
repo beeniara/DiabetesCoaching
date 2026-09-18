@@ -13,12 +13,14 @@
 - [x] Optional authenticated local server, explicit CORS, rate limit, redacted audit trail, and fail-closed AI route.
 - [x] Workspace tests, strict type checks, Expo compatibility/config checks, Android bundle smoke build, and loopback server smoke test.
 - [x] Setup, deployment, known-risk, and physical-device test documentation.
+- [x] Deterministic lifestyle coaching: weekly activity goals and progress, streaks, encouragement, sourced wellness tips, wellbeing check-ins, regular-check reminders, and contact-your-care-team prompts.
 
 ## Required before real-user release
 
 - [ ] Execute and sign off [PHYSICAL_DEVICE_TEST_PLAN.md](PHYSICAL_DEVICE_TEST_PLAN.md) on every supported Android and iOS version/device family.
 - [ ] Produce native Android and iOS release builds with final package IDs, signing, icon, splash, privacy manifests, and store metadata.
 - [ ] Obtain New Zealand clinician approval for target defaults, warning thresholds, Healthline/111 copy, and all limitations.
+- [ ] Obtain New Zealand clinician and dietitian review of all coaching copy: activity goal defaults, wellness tips, wellbeing-review messages, regular-check intervals, and the seek-help sign list.
 - [ ] Complete a privacy impact assessment covering health records, device backups, photos, exports, notifications, retention, deletion, and any AI-provider data controls.
 - [ ] Complete a threat model and independent security review for the chosen LAN, VPN, or HTTPS deployment.
 - [ ] Complete accessibility testing with VoiceOver/TalkBack, large text, contrast, switch/keyboard navigation where applicable, and cognitive usability review.

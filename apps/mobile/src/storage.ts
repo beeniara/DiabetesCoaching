@@ -5,8 +5,10 @@ import { ShelfAnalysisSchema, type ShelfAnalysis } from "../../../packages/share
 import { createDefaultUserProfile, markConsentAccepted, UserProfileSchema, type UserProfile } from "../../../packages/shared/src/profile";
 import { MedicationPlanSchema, type MedicationPlan } from "../../../packages/shared/src/medication-plans";
 import { summarizeTimeline } from "../../../packages/shared/src/timeline";
+import { WellbeingCheckInSchema, type WellbeingCheckIn } from "../../../packages/shared/src/wellbeing";
+import { createDefaultWellnessGoals, WellnessGoalsSchema, type WellnessGoals } from "../../../packages/shared/src/coaching";
 
-const DATABASE_VERSION = 3;
+const DATABASE_VERSION = 4;
 
 async function migrateLocalStore(db: SQLite.SQLiteDatabase) {
   await db.execAsync("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;");
@@ -95,6 +97,27 @@ async function migrateLocalStore(db: SQLite.SQLiteDatabase) {
       );
     `);
     version = 3;
+  }
+
+  if (version < 4) {
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS wellbeing_checkins (
+        id TEXT PRIMARY KEY NOT NULL,
+        user_id TEXT NOT NULL,
+        occurred_at TEXT NOT NULL,
+        timezone TEXT NOT NULL,
+        payload_json TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS wellbeing_checkins_occurred_at_idx ON wellbeing_checkins(occurred_at DESC);
+      CREATE TABLE IF NOT EXISTS wellness_goals (
+        id TEXT PRIMARY KEY NOT NULL,
+        weekly_active_minutes INTEGER NOT NULL,
+        resistance_days_per_week INTEGER NOT NULL,
+        daily_check_in INTEGER NOT NULL DEFAULT 1,
+        updated_at TEXT NOT NULL
+      );
+    `);
+    version = 4;
   }
 
   if (version !== DATABASE_VERSION) throw new Error("The local database version is newer than this app supports.");
@@ -403,9 +426,70 @@ export async function deleteShelfThread(db: SQLite.SQLiteDatabase, id: string) {
   await db.runAsync("DELETE FROM shelf_messages WHERE id = ?", id);
 }
 
+export async function saveWellbeingCheckIn(db: SQLite.SQLiteDatabase, checkIn: WellbeingCheckIn) {
+  const validated = WellbeingCheckInSchema.parse(checkIn);
+  await db.runAsync(
+    `INSERT OR REPLACE INTO wellbeing_checkins (id, user_id, occurred_at, timezone, payload_json) VALUES (?, ?, ?, ?, ?)`,
+    validated.id,
+    validated.userId,
+    validated.occurredAt,
+    validated.timezone,
+    JSON.stringify(validated)
+  );
+}
+
+export async function listWellbeingCheckIns(db: SQLite.SQLiteDatabase, limit = 60): Promise<WellbeingCheckIn[]> {
+  const rows = await db.getAllAsync<{ payload_json: string }>(
+    "SELECT payload_json FROM wellbeing_checkins ORDER BY occurred_at DESC LIMIT ?", limit
+  );
+  return rows.flatMap((row) => {
+    try {
+      const parsed = WellbeingCheckInSchema.safeParse(JSON.parse(row.payload_json));
+      return parsed.success ? [parsed.data] : [];
+    } catch {
+      return [];
+    }
+  });
+}
+
+export async function deleteWellbeingCheckIn(db: SQLite.SQLiteDatabase, id: string) {
+  await db.runAsync("DELETE FROM wellbeing_checkins WHERE id = ?", id);
+}
+
+export async function getWellnessGoals(db: SQLite.SQLiteDatabase): Promise<WellnessGoals> {
+  const row = await db.getFirstAsync<{
+    weekly_active_minutes: number;
+    resistance_days_per_week: number;
+    daily_check_in: number;
+    updated_at: string;
+  }>("SELECT weekly_active_minutes, resistance_days_per_week, daily_check_in, updated_at FROM wellness_goals WHERE id = 'default' LIMIT 1");
+  if (!row) return createDefaultWellnessGoals();
+  const parsed = WellnessGoalsSchema.safeParse({
+    weeklyActiveMinutes: row.weekly_active_minutes,
+    resistanceDaysPerWeek: row.resistance_days_per_week,
+    dailyCheckIn: row.daily_check_in === 1,
+    updatedAt: row.updated_at
+  });
+  return parsed.success ? parsed.data : createDefaultWellnessGoals();
+}
+
+export async function saveWellnessGoals(db: SQLite.SQLiteDatabase, goals: WellnessGoals) {
+  const validated = WellnessGoalsSchema.parse(goals);
+  await db.runAsync(
+    `INSERT OR REPLACE INTO wellness_goals (id, weekly_active_minutes, resistance_days_per_week, daily_check_in, updated_at)
+     VALUES ('default', ?, ?, ?, ?)`,
+    validated.weeklyActiveMinutes,
+    validated.resistanceDaysPerWeek,
+    validated.dailyCheckIn ? 1 : 0,
+    validated.updatedAt
+  );
+}
+
 export async function deleteAllLocalRecords(db: SQLite.SQLiteDatabase) {
   await db.withTransactionAsync(async () => {
     await db.runAsync("DELETE FROM health_events");
+    await db.runAsync("DELETE FROM wellbeing_checkins");
+    await db.runAsync("DELETE FROM wellness_goals");
     await db.runAsync("DELETE FROM medication_plans");
     await db.runAsync("DELETE FROM shelf_messages");
     await db.runAsync("DELETE FROM care_targets");

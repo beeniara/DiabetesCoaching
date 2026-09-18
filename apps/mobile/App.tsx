@@ -7,17 +7,19 @@ import { buildClinicianReviewSummary, formatClinicianReviewSummary } from "../..
 import { createMedicationPlan, describeMedicationPlanStatus, medicationPlanNeedsReschedule, type MedicationPlan } from "../../packages/shared/src/medication-plans";
 import { markConsentRevoked, type UserProfile } from "../../packages/shared/src/profile";
 import { createMockShelfAnalysis, formatShelfAnalysisSummary } from "../../packages/shared/src/shelf-analysis";
-import { addGlucoseEntry, addMedicationEntry, acceptConsent, deleteAllLocalRecords, deleteMedicationPlan, deleteShelfThread, getCareTargets, getOrCreateUserProfile, listHealthEvents, listMedicationPlans, listShelfThreads, openLocalStore, replaceHealthEvents, saveCareTargets, saveHealthEvent, saveMedicationPlan, saveShelfThread, saveUserProfile, type ShelfThreadRecord } from "./src/storage";
+import { addGlucoseEntry, addMedicationEntry, acceptConsent, deleteAllLocalRecords, deleteMedicationPlan, deleteShelfThread, deleteWellbeingCheckIn, getCareTargets, getOrCreateUserProfile, getWellnessGoals, listHealthEvents, listMedicationPlans, listShelfThreads, listWellbeingCheckIns, openLocalStore, replaceHealthEvents, saveCareTargets, saveHealthEvent, saveMedicationPlan, saveShelfThread, saveUserProfile, saveWellbeingCheckIn, saveWellnessGoals, type ShelfThreadRecord } from "./src/storage";
 import { clearLocalServerSettings, getLocalServerSettings, saveLocalServerSettings, type LocalServerSettingsRecord } from "./src/local-server-storage";
 import { normalizeLocalServerBaseUrl, sendShelfAnalysisToLocalServer, testLocalServerConnection } from "./src/local-server";
 import { cancelMedicationReminder, configureMedicationNotifications, getMedicationNotificationCapability, MEDICATION_ACTION_SKIPPED, MEDICATION_ACTION_SNOOZE, MEDICATION_ACTION_TAKEN, reconcileMedicationReminders, scheduleMedicationSnooze, syncMedicationReminderWithOptions } from "./src/reminders";
 import { formatTimelineLabel, summarizeTimeline } from "../../packages/shared/src/timeline";
-import { normalizeHealthEvent, safeGlucoseDisplay, type ExerciseEvent, type GlucoseCompartment, type HealthEvent, type MedicationEvent } from "../../packages/shared/src/health-events";
+import { normalizeHealthEvent, safeGlucoseDisplay, type ExerciseCategory, type ExerciseEvent, type GlucoseCompartment, type HealthEvent, type MedicationEvent } from "../../packages/shared/src/health-events";
+import { buildEncouragement, GUIDELINE_SOURCES, pickDailyTip, REGULAR_CHECKS, SEEK_HELP_SIGNS, suggestTipsForWeek, summarizeWeeklyActivity, WellnessGoalsSchema, type WellnessGoals } from "../../packages/shared/src/coaching";
+import { formatCheckInLabel, parseWellbeingCheckIn, reviewWellbeing, type MoodLevel, type StressLevel, type WellbeingCheckIn } from "../../packages/shared/src/wellbeing";
 import { BLE_GLUCOSE_MEASUREMENT_CHARACTERISTIC_UUID, BLE_GLUCOSE_SERVICE_UUID, createMockBleGattReading, createMockCloudSync, createMockImuExercise, createMockIntegrationBatch, createMockMealRecognition } from "../../packages/shared/src/mocks";
 import { synchronizeHealthEvents } from "../../packages/shared/src/synchronization";
 import { deleteOwnedShelfPhoto, persistShelfPhoto, readShelfPhotoDataUrl } from "./src/shelf-files";
 
-type AppTab = "home" | "log" | "timeline" | "reminders" | "devices" | "shelf" | "settings";
+type AppTab = "home" | "log" | "coach" | "timeline" | "reminders" | "devices" | "shelf" | "settings";
 
 type InputState = {
   glucoseValue: string;
@@ -37,7 +39,27 @@ type InputState = {
   exerciseActivity: string;
   exerciseDuration: string;
   exerciseIntensity: ExerciseEvent["intensity"];
+  exerciseCategory: ExerciseCategory | "";
+  checkInSleep: string;
+  checkInMood: MoodLevel | "";
+  checkInStress: StressLevel | "";
+  checkInWater: string;
+  checkInFootCheck: boolean;
+  checkInNotes: string;
 };
+
+type GoalInputs = { weeklyActiveMinutes: string; resistanceDaysPerWeek: string };
+
+const QUICK_ACTIVITIES: readonly { label: string; category: ExerciseCategory }[] = [
+  { label: "Walking", category: "aerobic" },
+  { label: "Cycling", category: "aerobic" },
+  { label: "Swimming", category: "aerobic" },
+  { label: "Strength", category: "resistance" },
+  { label: "Gardening", category: "everyday" },
+  { label: "Housework", category: "everyday" },
+  { label: "Yoga or stretching", category: "flexibility" },
+  { label: "Tai chi or balance", category: "balance" }
+];
 
 const initialInputs: InputState = {
   glucoseValue: "",
@@ -56,7 +78,14 @@ const initialInputs: InputState = {
   mealConfidencePercent: "70",
   exerciseActivity: "",
   exerciseDuration: "",
-  exerciseIntensity: "moderate"
+  exerciseIntensity: "moderate",
+  exerciseCategory: "",
+  checkInSleep: "",
+  checkInMood: "",
+  checkInStress: "",
+  checkInWater: "",
+  checkInFootCheck: false,
+  checkInNotes: ""
 };
 
 type TargetInputs = {
@@ -111,6 +140,9 @@ export default function App() {
     preferredMode: "mock"
   });
   const [inputs, setInputs] = useState<InputState>(initialInputs);
+  const [checkIns, setCheckIns] = useState<WellbeingCheckIn[]>([]);
+  const [goals, setGoals] = useState<WellnessGoals>(() => WellnessGoalsSchema.parse({ weeklyActiveMinutes: 150, resistanceDaysPerWeek: 2, dailyCheckIn: true, updatedAt: new Date().toISOString() }));
+  const [goalInputs, setGoalInputs] = useState<GoalInputs>({ weeklyActiveMinutes: "150", resistanceDaysPerWeek: "2" });
 
   useEffect(() => {
     let cancelled = false;
@@ -128,6 +160,8 @@ export default function App() {
         const loadedPlans = await listMedicationPlans(db);
         const loadedShelfThreads = await listShelfThreads(db, 50);
         const loadedServerSettings = await getLocalServerSettings(db);
+        const loadedCheckIns = await listWellbeingCheckIns(db, 60);
+        const loadedGoals = await getWellnessGoals(db);
         try {
           await configureMedicationNotifications();
         } catch {
@@ -148,6 +182,9 @@ export default function App() {
         setEvents(loadedEvents);
         setPlans(reconciledPlans.plans);
         setShelfThreads(loadedShelfThreads);
+        setCheckIns(loadedCheckIns);
+        setGoals(loadedGoals);
+        setGoalInputs({ weeklyActiveMinutes: String(loadedGoals.weeklyActiveMinutes), resistanceDaysPerWeek: String(loadedGoals.resistanceDaysPerWeek) });
         if (loadedServerSettings) setServerSettings(loadedServerSettings);
         setCapability(notificationCapability);
         setStatusMessage(reconciledPlans.issues.length > 0 ? reconciledPlans.issues[0] : "Local profile, timeline, and reminder plans loaded.");
@@ -556,6 +593,7 @@ export default function App() {
       activity: inputs.exerciseActivity.trim(),
       durationMinutes,
       intensity: inputs.exerciseIntensity,
+      category: inputs.exerciseCategory || undefined,
       detectedFromImu: false
     });
     if (!parsed.event || parsed.event.type !== "exercise") {
@@ -564,9 +602,71 @@ export default function App() {
     }
     const db = await openLocalStore();
     await saveHealthEvent(db, parsed.event);
-    setInputs((current) => ({ ...current, exerciseActivity: "", exerciseDuration: "" }));
+    setInputs((current) => ({ ...current, exerciseActivity: "", exerciseDuration: "", exerciseCategory: "" }));
     await refreshTimeline();
-    setStatusMessage("Activity saved locally.");
+    setStatusMessage("Activity saved locally. Check the Coach tab to see your week.");
+  }
+
+  async function refreshCheckIns() {
+    const db = await openLocalStore();
+    setCheckIns(await listWellbeingCheckIns(db, 60));
+  }
+
+  async function handleSaveCheckIn() {
+    if (!profile || !requireConsent()) return;
+    const sleepHours = inputs.checkInSleep.trim() === "" ? undefined : Number.parseFloat(inputs.checkInSleep);
+    const waterGlasses = inputs.checkInWater.trim() === "" ? undefined : Number.parseInt(inputs.checkInWater, 10);
+    if ((sleepHours !== undefined && !Number.isFinite(sleepHours)) || (waterGlasses !== undefined && !Number.isFinite(waterGlasses))) {
+      setStatusMessage("Enter sleep hours and water glasses as numbers, or leave them blank.");
+      return;
+    }
+    const now = new Date().toISOString();
+    const parsed = parseWellbeingCheckIn({
+      id: createHealthEventId("checkin"),
+      userId: profile.id,
+      occurredAt: now,
+      timezone: profile.timezone,
+      sleepHours,
+      mood: inputs.checkInMood || undefined,
+      stress: inputs.checkInStress || undefined,
+      waterGlasses,
+      footCheckDone: inputs.checkInFootCheck ? true : undefined,
+      notes: inputs.checkInNotes.trim() || undefined
+    });
+    if (!parsed.checkIn) {
+      setStatusMessage(parsed.issue ?? "Unable to save the check-in.");
+      return;
+    }
+    const db = await openLocalStore();
+    await saveWellbeingCheckIn(db, parsed.checkIn);
+    setInputs((current) => ({ ...current, checkInSleep: "", checkInMood: "", checkInStress: "", checkInWater: "", checkInFootCheck: false, checkInNotes: "" }));
+    await refreshCheckIns();
+    setStatusMessage("Check-in saved locally. Thanks for keeping track.");
+  }
+
+  async function handleDeleteCheckIn(checkIn: WellbeingCheckIn) {
+    const db = await openLocalStore();
+    await deleteWellbeingCheckIn(db, checkIn.id);
+    await refreshCheckIns();
+    setStatusMessage("Check-in deleted.");
+  }
+
+  async function handleSaveGoals() {
+    if (!requireConsent()) return;
+    const parsed = WellnessGoalsSchema.safeParse({
+      weeklyActiveMinutes: Number.parseInt(goalInputs.weeklyActiveMinutes, 10),
+      resistanceDaysPerWeek: Number.parseInt(goalInputs.resistanceDaysPerWeek, 10),
+      dailyCheckIn: goals.dailyCheckIn,
+      updatedAt: new Date().toISOString()
+    });
+    if (!parsed.success) {
+      setStatusMessage("Weekly minutes must be between 10 and 2000 and strength days between 0 and 7.");
+      return;
+    }
+    const db = await openLocalStore();
+    await saveWellnessGoals(db, parsed.data);
+    setGoals(parsed.data);
+    setStatusMessage("Weekly goals saved. Agree any big changes with your care team.");
   }
 
   async function handleSaveReminderPlan() {
@@ -864,6 +964,22 @@ export default function App() {
   }
 
   const timeline = dbState;
+  const weeklyActivity = useMemo(
+    () => summarizeWeeklyActivity(events, goals, new Date(clock), profile?.timezone ?? "Pacific/Auckland"),
+    [clock, events, goals, profile?.timezone]
+  );
+  const encouragement = useMemo(() => buildEncouragement(weeklyActivity, goals), [goals, weeklyActivity]);
+  const wellbeingReview = useMemo(() => reviewWellbeing(checkIns, new Date(clock)), [checkIns, clock]);
+  const dailyTip = useMemo(() => pickDailyTip(new Date(clock)), [clock]);
+  const suggestedTips = useMemo(
+    () => suggestTipsForWeek(weeklyActivity, {
+      averageSleepHours: wellbeingReview.averageSleepHours,
+      highStressDays: wellbeingReview.highStressDays,
+      footChecksDone: wellbeingReview.footChecksDone,
+      hasCheckIns: wellbeingReview.checkInsInWindow > 0
+    }).filter((tip) => tip.id !== dailyTip.id),
+    [dailyTip.id, weeklyActivity, wellbeingReview]
+  );
   const latestGlucoseCard = timeline.latestGlucose ? safeGlucoseDisplay(timeline.latestGlucose) : undefined;
   const clinicianReview = useMemo(
     () => buildClinicianReviewSummary(timeline.events, reviewContext, careTargets),
@@ -888,6 +1004,7 @@ export default function App() {
         {([
           ["home", "Today"],
           ["log", "Log"],
+          ["coach", "Coach"],
           ["timeline", "Timeline"],
           ["reminders", "Reminders"],
           ["devices", "Devices"],
@@ -1132,9 +1249,25 @@ export default function App() {
 
         <View style={[styles.card, activeTab !== "log" && styles.hidden]}>
           <Text style={styles.cardTitle}>Activity log</Text>
+          <Text style={styles.bodyText}>Any movement counts: walks, gardening, housework, strength work, or stretching.</Text>
+          <View style={styles.rowWrap}>
+            {QUICK_ACTIVITIES.map((quick) => (
+              <Pressable key={quick.label} accessibilityRole="button" style={inputs.exerciseActivity === quick.label ? styles.pillActive : styles.pill} onPress={() => setInputs((current) => ({ ...current, exerciseActivity: quick.label, exerciseCategory: quick.category }))}>
+                <Text style={inputs.exerciseActivity === quick.label ? styles.pillActiveText : styles.pillText}>{quick.label}</Text>
+              </Pressable>
+            ))}
+          </View>
           <View style={styles.fieldGroup}>
             <Text style={styles.label}>Activity</Text>
             <TextInput value={inputs.exerciseActivity} onChangeText={(value) => setInputs((current) => ({ ...current, exerciseActivity: value }))} style={styles.input} placeholder="Walking" placeholderTextColor="#80918A" />
+          </View>
+          <Text style={styles.label}>Type (optional)</Text>
+          <View style={styles.rowWrap}>
+            {(["aerobic", "resistance", "flexibility", "balance", "everyday"] as const).map((category) => (
+              <Pressable key={category} accessibilityRole="radio" accessibilityState={{ checked: inputs.exerciseCategory === category }} style={inputs.exerciseCategory === category ? styles.pillActive : styles.pill} onPress={() => setInputs((current) => ({ ...current, exerciseCategory: current.exerciseCategory === category ? "" : category }))}>
+                <Text style={inputs.exerciseCategory === category ? styles.pillActiveText : styles.pillText}>{category}</Text>
+              </Pressable>
+            ))}
           </View>
           <View style={styles.fieldGroup}>
             <Text style={styles.label}>Duration minutes</Text>
@@ -1353,6 +1486,180 @@ export default function App() {
         </View>
 
         <View style={[styles.card, activeTab !== "home" && styles.hidden]}>
+          <Text style={styles.cardTitle}>Your week in motion</Text>
+          <Text style={styles.metric}>{encouragement.headline}</Text>
+          <Text style={styles.bodyText}>{encouragement.message}</Text>
+          <Pressable accessibilityRole="button" style={styles.secondaryButton} onPress={() => setActiveTab("coach")}>
+            <Text style={styles.secondaryButtonText}>Open Coach</Text>
+          </Pressable>
+        </View>
+
+        <View style={[styles.card, activeTab !== "coach" && styles.hidden]}>
+          <Text style={styles.cardTitle}>This week's activity</Text>
+          <Text style={styles.metric}>{weeklyActivity.equivalentModerateMinutes} / {goals.weeklyActiveMinutes} active minutes</Text>
+          <View accessibilityRole="progressbar" accessibilityValue={{ min: 0, max: 100, now: Math.min(100, weeklyActivity.progressPercent) }} style={styles.progressTrack}>
+            <View style={[styles.progressFill, { width: `${Math.min(100, weeklyActivity.progressPercent)}%` }]} />
+          </View>
+          <Text style={styles.muted}>Vigorous minutes count double toward the goal, following Health NZ and WHO guidance. Light activity is recorded but does not count toward the target.</Text>
+          <View style={styles.rowWrap}>
+            <Text style={styles.pillText}>Sessions {weeklyActivity.sessions}</Text>
+            <Text style={styles.pillText}>Active days {weeklyActivity.activeDays}</Text>
+            <Text style={styles.pillText}>Strength days {weeklyActivity.resistanceDays} / {goals.resistanceDaysPerWeek}</Text>
+            <Text style={styles.pillText}>Streak {weeklyActivity.currentStreakDays} {weeklyActivity.currentStreakDays === 1 ? "day" : "days"}</Text>
+            {weeklyActivity.lightMinutes > 0 ? <Text style={styles.pillText}>Light {weeklyActivity.lightMinutes} min</Text> : null}
+          </View>
+          {weeklyActivity.excludedSuspectSessions > 0 ? (
+            <Text style={styles.issueText}>{weeklyActivity.excludedSuspectSessions} activity {weeklyActivity.excludedSuspectSessions === 1 ? "entry was" : "entries were"} excluded because of data-quality flags.</Text>
+          ) : null}
+          <Text style={styles.subtitle}>{encouragement.headline}</Text>
+          <Text style={styles.bodyText}>{encouragement.message}</Text>
+          <Text style={styles.bodyText}>Next step: {encouragement.nextStep}</Text>
+          <Text style={styles.muted}>{encouragement.safetyNote}</Text>
+          <Pressable accessibilityRole="button" style={styles.primaryButton} onPress={() => setActiveTab("log")}>
+            <Text style={styles.primaryButtonText}>Log an activity</Text>
+          </Pressable>
+        </View>
+
+        <View style={[styles.card, activeTab !== "coach" && styles.hidden]}>
+          <Text style={styles.cardTitle}>Tip of the day</Text>
+          <Text style={styles.subtitle}>{dailyTip.title}</Text>
+          <Text style={styles.bodyText}>{dailyTip.body}</Text>
+          <Text style={styles.muted}>Source: {dailyTip.sourceLabel}. General wellness information, not personal medical advice.</Text>
+          {suggestedTips.length > 0 ? (
+            <View style={styles.issueBox}>
+              <Text style={styles.label}>Suggested for you this week</Text>
+              {suggestedTips.map((tip) => (
+                <View key={tip.id} style={styles.timelineRow}>
+                  <Text style={styles.timelineLabel}>{tip.title}</Text>
+                  <Text style={styles.muted}>{tip.body}</Text>
+                </View>
+              ))}
+            </View>
+          ) : null}
+        </View>
+
+        <View style={[styles.card, activeTab !== "coach" && styles.hidden]}>
+          <Text style={styles.cardTitle}>Daily check-in</Text>
+          <Text style={styles.bodyText}>How are you doing today? Everything here is optional and stays on this device.</Text>
+          <View style={styles.row}>
+            <View style={styles.flexOne}>
+              <Text style={styles.label}>Sleep last night (hours)</Text>
+              <TextInput value={inputs.checkInSleep} onChangeText={(value) => setInputs((current) => ({ ...current, checkInSleep: value }))} keyboardType="decimal-pad" style={styles.input} placeholder="7.5" placeholderTextColor="#80918A" />
+            </View>
+            <View style={styles.flexOne}>
+              <Text style={styles.label}>Glasses of water</Text>
+              <TextInput value={inputs.checkInWater} onChangeText={(value) => setInputs((current) => ({ ...current, checkInWater: value }))} keyboardType="number-pad" style={styles.input} placeholder="8" placeholderTextColor="#80918A" />
+            </View>
+          </View>
+          <Text style={styles.label}>Mood</Text>
+          <View style={styles.rowWrap}>
+            {(["low", "flat", "okay", "good", "great"] as const).map((mood) => (
+              <Pressable key={mood} accessibilityRole="radio" accessibilityState={{ checked: inputs.checkInMood === mood }} style={inputs.checkInMood === mood ? styles.pillActive : styles.pill} onPress={() => setInputs((current) => ({ ...current, checkInMood: current.checkInMood === mood ? "" : mood }))}>
+                <Text style={inputs.checkInMood === mood ? styles.pillActiveText : styles.pillText}>{mood}</Text>
+              </Pressable>
+            ))}
+          </View>
+          <Text style={styles.label}>Stress</Text>
+          <View style={styles.rowWrap}>
+            {(["low", "moderate", "high"] as const).map((stress) => (
+              <Pressable key={stress} accessibilityRole="radio" accessibilityState={{ checked: inputs.checkInStress === stress }} style={inputs.checkInStress === stress ? styles.pillActive : styles.pill} onPress={() => setInputs((current) => ({ ...current, checkInStress: current.checkInStress === stress ? "" : stress }))}>
+                <Text style={inputs.checkInStress === stress ? styles.pillActiveText : styles.pillText}>{stress}</Text>
+              </Pressable>
+            ))}
+          </View>
+          <Pressable
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: inputs.checkInFootCheck }}
+            style={inputs.checkInFootCheck ? styles.pillActive : styles.pill}
+            onPress={() => setInputs((current) => ({ ...current, checkInFootCheck: !current.checkInFootCheck }))}
+          >
+            <Text style={inputs.checkInFootCheck ? styles.pillActiveText : styles.pillText}>{inputs.checkInFootCheck ? "Feet checked today" : "I checked my feet today"}</Text>
+          </Pressable>
+          <View style={styles.fieldGroup}>
+            <Text style={styles.label}>Notes (optional)</Text>
+            <TextInput value={inputs.checkInNotes} onChangeText={(value) => setInputs((current) => ({ ...current, checkInNotes: value }))} style={styles.input} placeholder="Anything you want to remember or share with your care team" placeholderTextColor="#80918A" multiline />
+          </View>
+          <Pressable accessibilityRole="button" style={styles.primaryButton} onPress={handleSaveCheckIn}>
+            <Text style={styles.primaryButtonText}>Save check-in</Text>
+          </Pressable>
+          {wellbeingReview.messages.length > 0 ? (
+            <View style={styles.issueBox}>
+              {wellbeingReview.messages.map((message) => <Text key={message} style={styles.issueText}>• {message}</Text>)}
+            </View>
+          ) : null}
+          <Text style={styles.muted}>
+            Last 7 days: {wellbeingReview.checkInsInWindow} check-ins
+            {wellbeingReview.averageSleepHours !== undefined ? `, average sleep ${wellbeingReview.averageSleepHours} h` : ""}
+            {wellbeingReview.footChecksDone > 0 ? `, feet checked ${wellbeingReview.footChecksDone} ${wellbeingReview.footChecksDone === 1 ? "day" : "days"}` : ""}.
+          </Text>
+          {checkIns.slice(0, 7).map((checkIn) => (
+            <View key={checkIn.id} style={styles.timelineRow}>
+              <Text style={styles.timelineLabel}>{formatCheckInLabel(checkIn)}</Text>
+              <Text style={styles.muted}>{formatDateTime(checkIn.occurredAt)}</Text>
+              {checkIn.notes ? <Text style={styles.muted}>{checkIn.notes}</Text> : null}
+              <Pressable accessibilityRole="button" style={styles.dangerButton} onPress={() => handleDeleteCheckIn(checkIn)}>
+                <Text style={styles.dangerButtonText}>Delete</Text>
+              </Pressable>
+            </View>
+          ))}
+        </View>
+
+        <View style={[styles.card, activeTab !== "coach" && styles.hidden]}>
+          <Text style={styles.cardTitle}>Weekly goals</Text>
+          <Text style={styles.bodyText}>Defaults follow Health NZ guidance: 150 minutes of moderate activity and strength work on 2 days a week. Start lower if you are new to activity and build up.</Text>
+          <View style={styles.row}>
+            <View style={styles.flexOne}>
+              <Text style={styles.label}>Active minutes per week</Text>
+              <TextInput value={goalInputs.weeklyActiveMinutes} onChangeText={(value) => setGoalInputs((current) => ({ ...current, weeklyActiveMinutes: value }))} keyboardType="number-pad" style={styles.input} />
+            </View>
+            <View style={styles.flexOne}>
+              <Text style={styles.label}>Strength days per week</Text>
+              <TextInput value={goalInputs.resistanceDaysPerWeek} onChangeText={(value) => setGoalInputs((current) => ({ ...current, resistanceDaysPerWeek: value }))} keyboardType="number-pad" style={styles.input} />
+            </View>
+          </View>
+          <Pressable accessibilityRole="button" style={styles.primaryButton} onPress={handleSaveGoals}>
+            <Text style={styles.primaryButtonText}>Save goals</Text>
+          </Pressable>
+        </View>
+
+        <View style={[styles.card, activeTab !== "coach" && styles.hidden]}>
+          <Text style={styles.cardTitle}>Regular checks to keep up</Text>
+          <Text style={styles.bodyText}>Your care team sets the exact schedule. These are the usual intervals in New Zealand.</Text>
+          {REGULAR_CHECKS.map((item) => (
+            <View key={item.check} style={styles.timelineRow}>
+              <Text style={styles.timelineLabel}>{item.check}</Text>
+              <Text style={styles.muted}>{item.typicalFrequency}</Text>
+            </View>
+          ))}
+        </View>
+
+        <View style={[styles.card, activeTab !== "coach" && styles.hidden]}>
+          <Text style={styles.cardTitle}>When to contact your care team</Text>
+          <Text style={styles.bodyText}>This app cannot assess or treat these situations. Use the prompts below to decide who to call.</Text>
+          {SEEK_HELP_SIGNS.map((item) => (
+            <View key={item.sign} style={styles.timelineRow}>
+              <Text style={styles.timelineLabel}>{item.sign}</Text>
+              <Text style={styles.issueText}>{item.action}</Text>
+            </View>
+          ))}
+          <View style={styles.row}>
+            <Pressable accessibilityRole="button" style={styles.dangerButton} onPress={() => handleCall("111")}>
+              <Text style={styles.dangerButtonText}>Call 111</Text>
+            </Pressable>
+            <Pressable accessibilityRole="button" style={styles.secondaryButton} onPress={() => handleCall("0800611116")}>
+              <Text style={styles.secondaryButtonText}>Call Healthline</Text>
+            </Pressable>
+          </View>
+          <Text style={styles.label}>Guidance sources</Text>
+          {GUIDELINE_SOURCES.map((source) => (
+            <Pressable key={source.url} accessibilityRole="link" onPress={() => Linking.openURL(source.url).catch(() => setStatusMessage("Unable to open the link on this device."))}>
+              <Text style={styles.linkText}>{source.label}</Text>
+            </Pressable>
+          ))}
+          <Text style={styles.muted}>Coaching content is general wellness information and has not yet been reviewed by a New Zealand clinician. It never replaces your care plan.</Text>
+        </View>
+
+        <View style={[styles.card, activeTab !== "home" && styles.hidden]}>
           <Text style={styles.cardTitle}>Safety reminder</Text>
           <Text style={styles.bodyText}>If there is immediate danger or a medical emergency, call 111. If you are worried or unsure about your health, call Healthline free on 0800 611 116, 24 hours a day.</Text>
           <Text style={styles.muted}>Use your agreed care plan and local urgent-care pathways rather than relying on this app alone.</Text>
@@ -1428,6 +1735,9 @@ const styles = StyleSheet.create({
   pillText: { color: colors.muted, fontWeight: "700" },
   pillActiveText: { color: colors.accent, fontWeight: "800" },
   timelineRow: { gap: 4, paddingVertical: 8, borderTopWidth: 1, borderTopColor: colors.border },
+  progressTrack: { height: 12, borderRadius: 999, backgroundColor: colors.accentSoft, overflow: "hidden" },
+  progressFill: { height: 12, borderRadius: 999, backgroundColor: colors.accent },
+  linkText: { color: colors.accent, fontSize: 13, lineHeight: 18, textDecorationLine: "underline" },
   timelineLabel: { color: colors.text, fontWeight: "700" },
   shelfImage: { width: "100%", height: 180, borderRadius: 12, backgroundColor: colors.accentSoft, resizeMode: "cover" },
   hidden: { display: "none" }

@@ -9,6 +9,13 @@ This file records material limitations that must remain visible. Passing reposit
 - Manual entries and mock data can be wrong. Quality labels reduce ambiguity but do not prove measurement accuracy or device provenance.
 - The clinician-review export is plain text selected by the user. The receiving application and user control its protection after sharing.
 
+## Coaching content
+
+- Coaching messages, tips, goal defaults, check intervals, and seek-help prompts are general wellness information transcribed from public Health NZ, Healthify, Diabetes NZ, NZSSD, ADA, and WHO pages in September 2026. They have not been clinically reviewed for this app and may not suit every person (for example frailty, neuropathy, pregnancy, kidney disease, or insulin use).
+- Weekly activity totals are derived from self-reported or simulated entries and count vigorous minutes double. They are motivation aids, not a clinical measure of fitness or glycaemic effect.
+- Wellbeing check-in reviews (sleep, stress, mood) are pattern prompts only. Low-mood prompts point to the GP and 1737; they are not a depression screen.
+- Contact prompts list warning signs so the person can decide who to call. They never instruct treatment, and thresholds quoted from public pages (such as 4 mmol/L, 17 mmol/L, or 20 mmol/L) must be confirmed against the person's own care plan.
+
 ## Notification reliability
 
 - Local notifications are best-effort. Permission denial, Android exact-alarm policy, Doze/idle modes, battery optimization, force-stop, reboot, timezone changes, OEM restrictions, and iOS scheduling limits can delay or suppress them.

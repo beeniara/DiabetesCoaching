@@ -13,6 +13,9 @@ The mobile app works offline for its core features. Personal records are stored 
 - Local medication plans, notifications, Taken/Skipped/Snooze actions, permission status, and schedule reconciliation.
 - Clinician-review summary generation and explicit operating-system sharing.
 - BLE GATT glucose (`0x1808` / `0x2A18`), delayed/rate-limited cloud, volumetric meal, and IMU exercise simulations through the same normalization and synchronization path intended for future adapters.
+- A Coach tab with weekly activity goals and progress, active-day streaks, encouragement with a concrete next step, quick-pick activity logging with type, and an exercise safety note.
+- Sourced general wellness tips (activity, nutrition, sleep, stress, foot care, regular checks, hydration, habits) with a tip of the day and suggestions driven by the last 7 days of data.
+- Daily wellbeing check-ins (sleep, mood, stress, water, foot check, notes) with a 7-day review, plus the usual New Zealand check intervals and a "when to contact your care team" list that routes to 111, Healthline, GP, or 1737.
 - Local shelf-photo capture/selection, app-owned storage, retryable queue, explicit deletion, and schema-validated mock or server analysis.
 - Authenticated optional local server with bounded requests, explicit CORS, rate limiting, redacted audit records, strict GPT output validation, and fail-closed configuration.
 
@@ -85,6 +88,6 @@ Mobile operating-system backups, device compromise, exports, screenshots, notifi
 
 ## Safety
 
-All values and trends are contextual estimates. Targets must be confirmed with the user's treating clinician. The app never supplies missed-dose advice or treatment instructions. In New Zealand, the UI offers `111` for emergencies and Healthline `0800 611 116` for free 24/7 health advice; approved release copy still requires local clinical review.
+Coaching content is general wellness information drawn from Health NZ, Healthify, Diabetes NZ, NZSSD, ADA, and WHO public guidance, linked in-app. It is not yet clinician-reviewed and never replaces an individual care plan. All values and trends are contextual estimates. Targets must be confirmed with the user's treating clinician. The app never supplies missed-dose advice or treatment instructions. In New Zealand, the UI offers `111` for emergencies and Healthline `0800 611 116` for free 24/7 health advice; approved release copy still requires local clinical review.
 
 The implementation status is in [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md), remaining external work is in [docs/WORK_ITEMS.md](docs/WORK_ITEMS.md), and material limitations are in [docs/KNOWN_RISKS.md](docs/KNOWN_RISKS.md).

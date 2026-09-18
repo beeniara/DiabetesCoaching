@@ -69,11 +69,15 @@ export const MealEventSchema = BaseEventSchema.extend({
 });
 export type MealEvent = z.infer<typeof MealEventSchema>;
 
+export const ExerciseCategorySchema = z.enum(["aerobic", "resistance", "flexibility", "balance", "everyday"]);
+export type ExerciseCategory = z.infer<typeof ExerciseCategorySchema>;
+
 export const ExerciseEventSchema = BaseEventSchema.extend({
   type: z.literal("exercise"),
   activity: z.string().min(1),
-  durationMinutes: z.number().finite().positive(),
+  durationMinutes: z.number().finite().positive().max(24 * 60),
   intensity: z.enum(["light", "moderate", "vigorous"]),
+  category: ExerciseCategorySchema.optional(),
   detectedFromImu: z.boolean()
 });
 export type ExerciseEvent = z.infer<typeof ExerciseEventSchema>;
