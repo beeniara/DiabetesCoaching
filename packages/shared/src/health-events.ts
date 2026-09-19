@@ -40,7 +40,7 @@ const BaseEventSchema = z.object({
 
 export const GlucoseEventSchema = BaseEventSchema.extend({
   type: z.literal("glucose"),
-  valueMmolL: z.number().finite().positive(),
+  valueMmolL: z.number().finite().positive().max(100),
   compartment: GlucoseCompartmentSchema,
   trendMmolLPerMin: z.number().finite().optional(),
   sensorDelayMinutes: z.number().finite().nonnegative().optional(),
@@ -48,11 +48,19 @@ export const GlucoseEventSchema = BaseEventSchema.extend({
 });
 export type GlucoseEvent = z.infer<typeof GlucoseEventSchema>;
 
+const MacronutrientRangeSchema = z.object({
+  min: z.number().finite().nonnegative(),
+  max: z.number().finite().nonnegative()
+}).refine((range) => range.min <= range.max, {
+  message: "Estimated range minimum must not exceed its maximum.",
+  path: ["max"]
+});
+
 export const MealEventSchema = BaseEventSchema.extend({
   type: z.literal("meal"),
   description: z.string().min(1),
   carbohydrateGrams: z.number().finite().nonnegative().optional(),
-  carbohydrateRangeGrams: z.object({ min: z.number().nonnegative(), max: z.number().nonnegative() }).optional(),
+  carbohydrateRangeGrams: MacronutrientRangeSchema.optional(),
   proteinGrams: z.number().finite().nonnegative().optional(),
   fatGrams: z.number().finite().nonnegative().optional(),
   fiberGrams: z.number().finite().nonnegative().optional(),
@@ -61,11 +69,15 @@ export const MealEventSchema = BaseEventSchema.extend({
 });
 export type MealEvent = z.infer<typeof MealEventSchema>;
 
+export const ExerciseCategorySchema = z.enum(["aerobic", "resistance", "flexibility", "balance", "everyday"]);
+export type ExerciseCategory = z.infer<typeof ExerciseCategorySchema>;
+
 export const ExerciseEventSchema = BaseEventSchema.extend({
   type: z.literal("exercise"),
   activity: z.string().min(1),
-  durationMinutes: z.number().finite().positive(),
+  durationMinutes: z.number().finite().positive().max(24 * 60),
   intensity: z.enum(["light", "moderate", "vigorous"]),
+  category: ExerciseCategorySchema.optional(),
   detectedFromImu: z.boolean()
 });
 export type ExerciseEvent = z.infer<typeof ExerciseEventSchema>;
@@ -92,13 +104,21 @@ export type ValidationIssue = {
   eventId?: string;
 };
 
-export function parseHealthEvent(input: unknown): { event?: HealthEvent; issues: ValidationIssue[] } {
+export function parseHealthEvent(input: unknown, now = new Date()): { event?: HealthEvent; issues: ValidationIssue[] } {
   const parsed = HealthEventSchema.safeParse(input);
   if (!parsed.success) return { issues: [{ code: "invalid", message: parsed.error.issues.map((issue) => issue.message).join("; ") }] };
 
   const event = parsed.data;
   const issues: ValidationIssue[] = [];
-  const delayMinutes = Math.max(0, (Date.parse(event.receivedAt) - Date.parse(event.occurredAt)) / 60000);
+  const occurredAtMs = Date.parse(event.occurredAt);
+  const receivedAtMs = Date.parse(event.receivedAt);
+  const delayMinutes = Math.max(0, (receivedAtMs - occurredAtMs) / 60000);
+  if (receivedAtMs + 5 * 60000 < occurredAtMs) {
+    issues.push({ code: "invalid", message: "Received time is earlier than the event time; review the device clock and timezone.", eventId: event.id });
+  }
+  if (occurredAtMs > now.getTime() + 5 * 60000) {
+    issues.push({ code: "invalid", message: "Event time is in the future; review the device clock and timezone.", eventId: event.id });
+  }
   if (delayMinutes > 60) issues.push({ code: "delayed", message: `Reading was received ${Math.round(delayMinutes)} minutes after it occurred.`, eventId: event.id });
   if (event.type === "glucose" && event.compartment === "interstitial-fluid") {
     const rate = Math.abs(event.trendMmolLPerMin ?? 0);
@@ -107,6 +127,15 @@ export function parseHealthEvent(input: unknown): { event?: HealthEvent; issues:
     }
   }
   return { event, issues };
+}
+
+export function normalizeHealthEvent(input: unknown, now = new Date()): { event?: HealthEvent; issues: ValidationIssue[] } {
+  const parsed = parseHealthEvent(input, now);
+  if (!parsed.event) return parsed;
+  return {
+    event: { ...parsed.event, quality: classifyEventQuality(parsed.event, parsed.issues) } as HealthEvent,
+    issues: parsed.issues
+  };
 }
 
 export function classifyEventQuality(event: HealthEvent, issues: ValidationIssue[]): DataQuality {
@@ -120,7 +149,7 @@ export function classifyEventQuality(event: HealthEvent, issues: ValidationIssue
 
 export function mergeHealthEvents(events: HealthEvent[]): { events: HealthEvent[]; issues: ValidationIssue[] } {
   const issues: ValidationIssue[] = [];
-  const seen = new Set<string>();
+  const seen = new Map<string, number>();
   let lastSeenOccurredAt = Number.NEGATIVE_INFINITY;
   const byTimestamp = [...events].sort((a, b) => Date.parse(a.occurredAt) - Date.parse(b.occurredAt));
   const merged: HealthEvent[] = [];
@@ -136,14 +165,23 @@ export function mergeHealthEvents(events: HealthEvent[]): { events: HealthEvent[
     lastSeenOccurredAt = Math.max(lastSeenOccurredAt, occurredAt);
   }
   for (const event of byTimestamp) {
-    if (seen.has(event.id)) {
+    const existingIndex = seen.get(event.id);
+    if (existingIndex !== undefined) {
       issues.push({ code: "duplicate", message: "Duplicate event ignored.", eventId: event.id });
+      const existing = merged[existingIndex];
+      if (JSON.stringify(existing) !== JSON.stringify(event)) {
+        issues.push({ code: "conflict", message: "Duplicate event ID contained contradictory data; review the source before relying on it.", eventId: event.id });
+        merged[existingIndex] = { ...existing, quality: "conflicting" } as HealthEvent;
+      }
       continue;
     }
-    seen.add(event.id);
+    seen.set(event.id, merged.length);
     const previous = merged.at(-1);
     if (previous?.type === "glucose" && event.type === "glucose" && previous.compartment === event.compartment && Math.abs(Date.parse(previous.occurredAt) - Date.parse(event.occurredAt)) < 120000 && Math.abs(previous.valueMmolL - event.valueMmolL) > 3) {
       issues.push({ code: "conflict", message: "Nearby glucose readings conflict materially; review before relying on the trend.", eventId: event.id });
+      merged[merged.length - 1] = { ...previous, quality: "conflicting" };
+      merged.push({ ...event, quality: "conflicting" });
+      continue;
     }
     merged.push(event);
   }
@@ -154,6 +192,10 @@ export function safeGlucoseDisplay(event: GlucoseEvent): { label: string; warnin
   const lagWarning = event.compartment === "interstitial-fluid" && (event.sensorDelayMinutes ?? 0) > 0
     ? "Interstitial-fluid reading; it may lag behind blood glucose."
     : undefined;
-  const freshness = event.quality === "delayed" ? "Delayed reading" : event.quality === "suspect" ? "Review reading" : "Current reading";
+  const freshness = event.quality === "delayed"
+    ? "Delayed reading"
+    : event.quality === "suspect" || event.quality === "conflicting"
+      ? "Review reading"
+      : "Recorded reading";
   return { label: `${freshness}: ${event.valueMmolL.toFixed(1)} mmol/L`, warning: lagWarning };
 }

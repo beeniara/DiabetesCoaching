@@ -1,240 +1,77 @@
-# Diabetes Coaching App Blueprint Research
+# Diabetes Coaching Architecture Blueprint
 
-## Purpose
+This document is the authoritative implementation blueprint for the Auckland-focused Type 2 diabetes coaching companion. The product is a wellness and decision-support application. It is not an autonomous medical device and must never diagnose, calculate insulin or other medication doses, change medicines, or manage emergencies.
 
-This document distills the main points from **Diabetes App Development Research.md** into a practical product and engineering blueprint. It is research guidance, not a substitute for clinical validation, regulatory review, or advice from a qualified healthcare professional.
+## Product boundary
 
-## 1. Product vision
+The core experience works offline and keeps personal health records on the device by default. The optional local server adds authenticated shelf-photo analysis but is not required for consent, manual logging, the timeline, reminders, target context, or clinician-review exports. Any clinical target is contextual, user-configurable, and marked as requiring clinician review.
 
-The proposed application is a multimodal diabetes-management platform that combines:
+Concerning readings or symptoms must lead to clear limitations and clinician/urgent-care escalation copy. They must never lead to treatment instructions. Estimates, delayed readings, physiological lag, conflicts, and unavailable data are visibly labelled.
 
-- Continuous Glucose Monitor (CGM) data.
-- Blood Glucose Meter (BGM) readings.
-- Meal-photo analysis and carbohydrate estimation.
-- Exercise and activity recognition.
-- Medication schedules, adherence prompts, and predictive modeling.
-- Mobile, smartwatch, and cloud synchronization.
+## Workspace architecture
 
-The core value is a unified timeline that helps users understand how glucose, food, activity, and medication interact. The system should provide decision support and safety alerts, while avoiding unsafe autonomous treatment decisions until the product has appropriate clinical evidence and regulatory authorization.
+### `apps/mobile`
 
-## 2. Sensor and data integration
+Expo/React Native owns screens, navigation, accessibility, SQLite persistence, local notification scheduling, camera/photo selection, local exports, and network calls to the optional local server. No external AI key may be bundled in the mobile app.
 
-### Bluetooth Low Energy
+SQLite is the on-device source of truth. Schema changes use explicit, ordered migrations in a transaction. Data loaded from SQLite is parsed with shared Zod contracts before use; corrupt rows are excluded and surfaced as limited-quality data rather than crashing the app.
 
-- Use BLE GATT for compatible BGMs and local glucose devices.
-- Support the ISO/IEEE 11073-10417 glucose-meter profile where devices expose it.
-- Discover the Glucose Service (`0x1808`) and subscribe to the relevant characteristics:
-  - Glucose Measurement (`0x2A18`) for readings and timestamps.
-  - Glucose Feature (`0x2A51`) for device capabilities.
-  - Record Access Control Point (`0x2A52`) for historical-record retrieval.
-  - Glucose Measurement Context (`0x2A34`) when available for meal or exercise context.
-- Parse little-endian, variable-length payloads and handle optional fields based on the packet flags.
-- Correctly interpret IEEE 11073 short-float values and reserved values such as NaN, not-at-resolution, and infinity states.
-- On reconnection, request stored records through RACP so readings collected while offline are not lost.
-- Build a device-compatibility layer because manufacturers vary in pairing, permissions, payload behavior, and supported features.
+### `apps/local-server`
 
-### Proprietary CGM cloud integrations
+Express owns authenticated `/v1` routes and optional OpenAI calls. It binds to a configurable host/port, limits request size, validates every input and output, uses timing-safe token comparison, redacts audit details, and fails closed when authentication or AI configuration is absent. The server does not persist photos or health records by default.
 
-- Commercial CGMs may restrict direct sensor connections and require approved cloud or health-platform integrations.
-- Use OAuth 2.0 for authorized services such as Dexcom-style APIs.
-- Design for retrospective data: cloud CGM feeds may have delays and should not be treated as real-time control telemetry.
-- Perform an initial historical import, then incremental synchronization from the last accepted timestamp.
-- Use rate-limited polling where webhooks are unavailable; make the polling interval configurable.
-- Consider Apple Health and Android Health Connect as intermediary repositories for supported CGM, BGM, medication, and wearable data.
-- Clearly label each reading with source, timestamp, timezone, freshness, and confidence.
+### `packages/shared`
 
-### Smartwatch and edge devices
+Shared TypeScript owns normalized event contracts, deterministic quality/synchronization rules, target-context rules, medication-plan state, shelf-analysis schemas, integration mocks, and unit tests. Platform APIs and UI code do not belong here.
 
-- Treat the phone as the primary coordinator, with watch apps providing glanceable status, alerts, and activity data.
-- Support direct watch or sensor bridges only where the hardware and manufacturer permissions allow it.
-- Plan for intermittent connectivity, battery constraints, duplicated readings, and delayed synchronization.
-- Do not make a watch display the sole safety channel for urgent medical alerts.
+## Normalized data model
 
-## 3. Physiological modeling of glucose data
+Every health event includes a stable ID, user ID, event type, source, occurrence and receipt timestamps, IANA timezone, confidence from 0 to 1, quality state, and optional notes.
 
-### Interstitial-fluid lag
+- Glucose distinguishes capillary blood from interstitial fluid and may include context, trend, and source delay.
+- Meals contain user-confirmed descriptions and optional single-value or ranged macronutrient estimates with portion confidence.
+- Exercise contains activity, duration, intensity, and whether IMU data produced the estimate.
+- Medication events record the medication label and an acknowledgement state only; prescribed dose text is reference data, never a calculated recommendation.
 
-- CGMs measure glucose in interstitial fluid, not directly in blood.
-- Blood-to-interstitial glucose lag is commonly several minutes and can increase during rapid rises, falls, meals, exercise, or medication action.
-- The app must preserve this distinction in its data model and user interface.
-- Predictive logic should use trend, rate of change, recent events, and sensor freshness rather than treating one CGM value as an exact current blood-glucose value.
-- During suspected hypoglycemia, rapid exercise, or rapidly changing glucose, the app should encourage confirmation with a BGM when appropriate and follow the user’s clinician-provided treatment plan.
+Quality states are `valid`, `delayed`, `estimated`, `suspect`, `missing`, and `conflicting`. Invalid external records never reach storage or display. Duplicate IDs are idempotent. Out-of-order records are sorted by occurrence time, while material nearby glucose disagreements are retained and flagged for review.
 
-### Accuracy and calibration
+## Mobile feature flows
 
-- Track MARD and other accuracy measures during validation, but do not use MARD as the only quality metric.
-- Evaluate directional bias, error during rapid change, hypoglycemia detection, missing data, and time synchronization.
-- Store calibration provenance and prevent unsafe or ambiguous calibration workflows.
-- Only allow calibration when the device manufacturer permits it and the reading is physiologically stable; reject or defer calibration during rapid trend changes.
-- Flag sensor artifacts, compression-related anomalies, implausible jumps, stale data, and conflicting BGM/CGM readings.
+1. Onboarding records explicit consent and a local profile before health logging or photo capture is enabled. Consent can be revoked without deleting the profile, and revocation stops new sensitive-data collection.
+2. The dashboard shows the latest real reading only, its source/compartment, freshness, data limitations, target context, and event counts. Empty states never substitute demo values for personal data.
+3. Manual logging validates glucose, meals, activity, and medication acknowledgement before storage, then updates one unified timeline.
+4. Medication plans schedule device-local notifications. The app reports notification permission and exact-alarm limitations, reconciles schedules after launch/edits/timezone changes, and supports enable, disable, resync, and acknowledgement without missed-dose advice.
+5. Integration simulation covers BLE GATT Glucose Service `0x1808` / Measurement `0x2A18`, delayed and rate-limited cloud CGM delivery, volumetric meal estimates, and IMU exercise estimates. The same normalization and merge path processes mock and future real adapters.
+6. Shelf photos remain local unless the user explicitly requests server analysis. Server failure leaves a retryable queued item; it does not silently present a mock as a remote result. Users can delete both the database record and locally copied image.
+7. Clinician-review export is generated locally, clearly dated, quality-aware, and shareable only through an explicit user action.
 
-### Data-quality states
+## Reminder reliability
 
-Every glucose observation should have an explicit state, such as:
+Notification delivery is best-effort and subject to mobile OS limits. Android builds declare `POST_NOTIFICATIONS` and `SCHEDULE_EXACT_ALARM`, but the app must inspect capability at runtime and must not claim punctual delivery. Use a daily calendar trigger where supported, reconcile native notification identifiers, and mark failures or stale schedules visibly. Exact-while-idle behavior and restart handling require physical-device verification on each supported OS version.
 
-- `valid` — usable for display and approved calculations.
-- `delayed` — known source delay or stale synchronization.
-- `estimated` — model-derived rather than directly measured.
-- `suspect` — possible artifact or conflicting data.
-- `missing` — no usable observation in the expected interval.
+## Optional server and AI safety
 
-Safety-critical logic should fail safely when data is missing, delayed, or suspect.
+Protected endpoints require `LOCAL_SERVER_API_KEY`. GPT-backed analysis additionally requires `OPENAI_API_KEY` on the server. Requests require an allowed image data URL and bounded caption; responses must pass the strict shared `ShelfAnalysisSchema`. The mobile app displays limitations and the fixed coaching-only safety notice. No request, token, image, personal identifier, or health payload is written to plaintext logs.
 
-## 4. Food recognition and carbohydrate estimation
+## Delivery phases
 
-### Image recognition
+1. Foundation: verified workspace, migrations, consent/profile, manual logs, unified timeline, quality labels, accessibility baseline, and local-only defaults.
+2. Medication: editable plans, permission/capability reporting, native schedule reconciliation, acknowledgement events, and failure states.
+3. Context and integrations: target review, quality-aware trends/export, BLE/cloud/meal/IMU mocks, synchronization, deduplication, ordering, conflicts, and lag flags.
+4. Shelf workflow: local photo lifecycle, consent-aware queue, retry/delete controls, and schema-validated local-server analysis.
+5. Server hardening: bounded validated routes, authentication, privacy-safe auditing, GPT failure containment, and endpoint tests.
+6. Release verification: unit/integration tests, strict type checks, Expo compatibility/config checks, bundle smoke builds, physical-device notification/camera tests, clinical/privacy/security/accessibility review, and updated known-risk documentation.
 
-- Use a nutrition-intelligence service or validated model to identify foods and return structured nutrition data.
-- Capture carbohydrates, fiber, sugars, protein, fats, relevant micronutrients, allergens, and confidence scores where available.
-- Preserve the original image only when necessary, with explicit consent and retention controls.
-- Allow users to correct food identity, serving size, ingredients, and nutrition values.
+## Verification commands
 
-### Portion and volume estimation
+From the repository root after `npm ci`:
 
-- Food classification is easier than estimating portion size from a single 2D image.
-- Prefer depth-capable phones, multiple viewpoints, known-size references, or user-entered serving information when available.
-- Treat photo-based carbohydrate values as estimates, not ground truth.
-- Display uncertainty and provide a quick correction flow.
-- Handle mixed dishes, sauces, cooking methods, restaurant meals, packaged foods, and culturally diverse foods.
-- Keep a user-specific food history to improve speed and consistency, without silently changing logged values.
+```sh
+npm test
+npm run typecheck
+npm run check
+npm run dev:mobile
+npm run dev:server
+```
 
-### Meal event model
-
-Each meal record should support:
-
-- Image and recognized food items.
-- Estimated portions and carbohydrate range.
-- User corrections and confidence.
-- Meal time and eating duration.
-- Absorption characteristics, such as high-fat or high-fiber meals.
-- Linkage to subsequent glucose trends for retrospective learning.
-
-## 5. Exercise and kinematic tracking
-
-- Combine accelerometer and gyroscope data from phones and watches.
-- Use activity-classification models to distinguish walking, cycling, boxing, strength movements, and other relevant activities.
-- Track duration, intensity, onset, end time, and confidence rather than only steps.
-- Let users confirm or correct automatically detected activities.
-- Account for exercise-related glucose uptake, counter-regulatory hormones, delayed effects, and post-exercise hypoglycemia risk.
-- During intense exercise, treat CGM readings with additional caution because blood-to-interstitial lag may be greater.
-- Store raw high-frequency motion data only when needed for model development; otherwise retain derived features to reduce privacy and storage risk.
-
-## 6. Predictive modeling and medication support
-
-### Prediction engine
-
-- Combine glucose history, CGM trend, BGM readings, meals, exercise, medication events, sleep, and other consented context.
-- Use physiology-informed constraints so predictions remain plausible under known glucose-insulin dynamics.
-- Model delayed effects of meals, exercise, and medication rather than assuming an immediate linear response.
-- Return a forecast range, confidence, contributing factors, and data freshness—not just a single number.
-- Detect out-of-distribution situations and fall back to conservative, explainable behavior.
-- Separate prediction from treatment recommendation. Any dosing or medication-change feature requires clinical oversight, validation, and regulatory assessment.
-
-### Medication adherence
-
-- Support medication name, dose prescribed by the clinician, schedule, timing flexibility, and confirmation status.
-- Record taken, skipped, snoozed, unknown, and user-corrected events.
-- Avoid inferring that a medication was taken merely because the user dismissed a notification.
-- Provide a clear escalation path for missed or high-risk events based on the user’s care plan.
-
-## 7. Mobile notification infrastructure
-
-- Medication reminders must remain reliable during background suspension, battery optimization, and intermittent connectivity.
-- Use platform-supported scheduling and notification APIs, including exact-alarm capabilities only where justified and permitted.
-- Request permissions with clear explanations and provide fallbacks when permissions are denied.
-- Use local notifications for scheduled events and push notifications for server-originated updates.
-- Make urgent alerts distinctive, actionable, and accessible; avoid notification overload.
-- Include a test-notification flow and an audit trail showing when a notification was scheduled, delivered, opened, dismissed, or missed.
-- Do not depend on one channel for critical safety communication; define appropriate backup behavior.
-
-## 8. Security, privacy, and compliance
-
-- Treat glucose, medication, activity, and dietary data as sensitive health information.
-- Apply data minimization, encryption in transit and at rest, least-privilege access, and strong account security.
-- Never place raw glucose values, meal images, tokens, or personal identifiers in application logs.
-- Keep consent, data-sharing, device authorization, and retention records auditable.
-- Support revocation, export, correction, and secure deletion workflows.
-- Separate personally identifiable information from analytics data where practical.
-- Establish retention limits for raw images, sensor payloads, model inputs, and audit records.
-- Review HIPAA, GDPR/UK GDPR, New Zealand Privacy Act, medical-device, and local clinical-software obligations as applicable to the launch market.
-
-## 9. Recommended architecture
-
-### Client applications
-
-- Mobile client for onboarding, dashboard, data entry, meal capture, medication confirmation, and alerts.
-- Watch client for concise readings, activity capture, and notification acknowledgement.
-- Local encrypted store for offline-first ingestion and queued synchronization.
-- Device adapter layer for BLE, health repositories, vendor APIs, and watch bridges.
-
-### Backend services
-
-- Authentication and consent service.
-- Device and integration service.
-- Ingestion pipeline with deduplication and source precedence rules.
-- Canonical health-event store with immutable raw-event references and normalized observations.
-- Prediction service with model versioning, feature provenance, confidence, and rollback support.
-- Notification orchestration service.
-- Audit, privacy, support, and observability services.
-
-### Canonical event fields
-
-At minimum, store:
-
-- Event ID and user ID.
-- Event type and source device/service.
-- Value and unit.
-- Device timestamp and server-received timestamp.
-- Timezone and synchronization status.
-- Data-quality state and confidence.
-- Model version when derived.
-- Consent and retention classification.
-
-## 10. Safety and validation requirements
-
-- Begin with a non-diagnostic wellness and logging MVP before adding high-risk recommendations.
-- Validate each device integration independently before combining streams.
-- Test delayed, duplicated, missing, contradictory, and out-of-order data.
-- Test low-glucose, rapidly changing glucose, exercise, meal, medication, offline, reboot, permission-denied, and battery-saving scenarios.
-- Conduct clinical review of user-facing wording, thresholds, escalation behavior, and emergency guidance.
-- Maintain a clear distinction between educational information, trend interpretation, clinician-configured reminders, and medical advice.
-- Establish human review and incident-response processes before launch.
-
-## 11. Suggested delivery phases
-
-### Phase 1 — Safe foundation
-
-- Account, consent, profile, manual glucose/BGM entry, medication logging, and a unified timeline.
-- Basic notifications, audit logging, data export, and privacy controls.
-
-### Phase 2 — Validated integrations
-
-- One supported CGM integration, one BGM BLE integration, and one health-platform integration.
-- Offline sync, deduplication, data-quality labeling, and device troubleshooting.
-
-### Phase 3 — Context capture
-
-- Meal photo workflow with human correction.
-- Exercise detection with user confirmation.
-- Watch dashboard and activity synchronization.
-
-### Phase 4 — Explainable prediction
-
-- Forecast ranges and trend explanations.
-- Retrospective insights linking meals, activity, medication events, and glucose outcomes.
-- Clinical evaluation before enabling any treatment-related recommendation.
-
-## 12. Key risks to manage
-
-- CGM delay can make a current-looking value clinically misleading.
-- Vendor APIs, permissions, pricing, and access tiers can change.
-- Photo-based portion estimates may be materially wrong.
-- Exercise can cause both immediate and delayed glucose effects.
-- Background restrictions can make reminders unreliable if not engineered and tested carefully.
-- Combining multiple sources can create duplicate or conflicting readings.
-- Sensitive health data can be exposed through logs, analytics, screenshots, backups, or third-party processors.
-- Predictive outputs may appear more authoritative than their evidence supports; uncertainty and limitations must be visible.
-
-## Source
-
-This blueprint summarizes **Diabetes App Development Research.md**, including its discussion of BLE glucose services, proprietary CGM APIs, smartwatch bridges, interstitial-fluid physiology, CGM accuracy and calibration, computer-vision nutrition estimation, IMU exercise classification, physiology-informed prediction, mobile alarms, and privacy considerations.
+Automated checks do not replace physical-device camera, notification, timezone, restart, offline, and accessibility tests or independent New Zealand clinical/privacy/security review.

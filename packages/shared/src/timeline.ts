@@ -1,6 +1,6 @@
 import { type HealthEvent } from "./health-events";
 
-export type TimelineFreshness = "current" | "delayed" | "limited";
+export type TimelineFreshness = "current" | "delayed" | "stale" | "limited";
 
 export type TimelineSummary = {
   events: HealthEvent[];
@@ -19,7 +19,7 @@ export function sortHealthTimeline(events: HealthEvent[]): HealthEvent[] {
   });
 }
 
-export function summarizeTimeline(events: HealthEvent[]): TimelineSummary {
+export function summarizeTimeline(events: HealthEvent[], now = new Date()): TimelineSummary {
   const ordered = sortHealthTimeline(events);
   const counts: Record<HealthEvent["type"], number> = {
     glucose: 0,
@@ -33,13 +33,26 @@ export function summarizeTimeline(events: HealthEvent[]): TimelineSummary {
   const latestEvent = ordered[0];
   const latestGlucose = ordered.find((event): event is Extract<HealthEvent, { type: "glucose" }> => event.type === "glucose");
   const delayedGlucose = latestGlucose?.quality === "delayed" || (latestGlucose?.sensorDelayMinutes ?? 0) > 60;
-  const freshness: TimelineFreshness = delayedGlucose ? "delayed" : latestEvent ? "current" : "limited";
+  const glucoseAgeMinutes = latestGlucose ? Math.max(0, (now.getTime() - Date.parse(latestGlucose.occurredAt)) / 60000) : undefined;
+  const freshness: TimelineFreshness = delayedGlucose
+    ? "delayed"
+    : glucoseAgeMinutes !== undefined && glucoseAgeMinutes > 180
+      ? "stale"
+      : latestEvent
+        ? "current"
+        : "limited";
   const warning = latestGlucose
-    ? latestGlucose.compartment === "interstitial-fluid" && (latestGlucose.sensorDelayMinutes ?? 0) > 0
+    ? latestGlucose.quality === "conflicting"
+      ? "Latest glucose conflicts with a nearby reading. Review the source data before relying on a trend."
+      : latestGlucose.quality === "suspect"
+        ? "Latest glucose has a data-quality issue. Review its timestamp, source, and device clock."
+        : latestGlucose.compartment === "interstitial-fluid" && (latestGlucose.sensorDelayMinutes ?? 0) > 0
       ? "Latest glucose may lag behind blood glucose because it came from interstitial fluid."
       : latestGlucose.quality === "delayed"
         ? "Latest glucose was received late from the source device or cloud service."
-        : "Latest glucose is current for the app's timeline."
+        : glucoseAgeMinutes !== undefined && glucoseAgeMinutes > 180
+          ? `Latest glucose was recorded ${Math.round(glucoseAgeMinutes / 60)} hours ago and may not reflect the current situation.`
+          : "Latest glucose is current for the app's timeline."
     : "No glucose data has been logged yet.";
 
   return { events: ordered, freshness, warning, latestEvent, latestGlucose, counts };

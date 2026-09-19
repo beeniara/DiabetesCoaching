@@ -3,12 +3,43 @@
     "name": "Diabetes Coaching App",
     "slug": "diabetes-coaching-app",
     "scheme": "diabetescoaching",
-    "plugins": ["expo-notifications", "expo-sqlite", "expo-image-picker"],
+    "plugins": [
+      "expo-notifications",
+      "expo-sqlite",
+      [
+        "expo-image-picker",
+        {
+          "microphonePermission": false
+        }
+      ],
+      [
+        "expo-secure-store",
+        {
+          "configureAndroidBackup": true
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ]
+    ],
     "android": {
-      "permissions": ["SCHEDULE_EXACT_ALARM", "POST_NOTIFICATIONS", "CAMERA", "READ_MEDIA_IMAGES"]
+      "permissions": [
+        "SCHEDULE_EXACT_ALARM",
+        "POST_NOTIFICATIONS",
+        "CAMERA",
+        "READ_MEDIA_IMAGES"
+      ]
     },
     "ios": {
       "infoPlist": {
+        "NSAppTransportSecurity": {
+          "NSAllowsLocalNetworking": true
+        },
         "NSCameraUsageDescription": "Capture shelf photos for local food coaching and queue them for optional analysis.",
         "NSPhotoLibraryUsageDescription": "Choose shelf photos for local food coaching and queue them for optional analysis.",
         "NSPhotoLibraryAddUsageDescription": "Save queued shelf photos locally when you confirm capture."

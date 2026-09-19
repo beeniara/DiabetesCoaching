@@ -7,8 +7,12 @@ import { ShelfAnalysisSchema, type ShelfAnalysis } from "../../../packages/share
  * Never return an LLM response until it passes the shared strict schema.
  */
 export async function validateGptShelfResponse(candidate: unknown): Promise<ShelfAnalysis> {
-  return ShelfAnalysisSchema.parse(candidate);
+  const parsed = ShelfAnalysisSchema.safeParse(candidate);
+  if (!parsed.success) throw new GptShelfValidationError("The OpenAI response did not match ShelfAnalysisSchema.");
+  return parsed.data;
 }
+
+export class GptShelfValidationError extends Error {}
 
 export function isOpenAiConfigured() {
   return Boolean(process.env.OPENAI_API_KEY?.trim());
@@ -55,7 +59,7 @@ const SHELF_ANALYSIS_JSON_SCHEMA = {
 function getOpenAiClient() {
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) return null;
-  return new OpenAI({ apiKey });
+  return new OpenAI({ apiKey, timeout: 30000, maxRetries: 1 });
 }
 
 export async function generateGptShelfAnalysis(input: { caption?: string; photoDataUrl: string }) {
@@ -100,8 +104,13 @@ export async function generateGptShelfAnalysis(input: { caption?: string; photoD
   });
 
   const outputText = response.output_text;
-  if (!outputText) throw new Error("OpenAI returned an empty shelf-analysis response.");
-  return validateGptShelfResponse(JSON.parse(outputText));
+  if (!outputText) throw new GptShelfValidationError("OpenAI returned an empty or refused shelf-analysis response.");
+  try {
+    return validateGptShelfResponse(JSON.parse(outputText));
+  } catch (error) {
+    if (error instanceof GptShelfValidationError) throw error;
+    throw new GptShelfValidationError("OpenAI returned invalid JSON for shelf analysis.");
+  }
 }
 
 export const SHELF_ANALYSIS_SYSTEM_INSTRUCTIONS = [

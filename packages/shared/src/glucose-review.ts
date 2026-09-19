@@ -25,7 +25,7 @@ export type ClinicianReviewSummary = {
   medicationEvents: number;
   latestGlucose?: GlucoseEvent;
   glucoseTrend: GlucoseTrendSummary;
-  targetReview: ReturnType<typeof describeGlucose>;
+  targetReview?: ReturnType<typeof describeGlucose>;
   notes: string[];
 };
 
@@ -49,6 +49,15 @@ export function deriveGlucoseTrend(events: HealthEvent[], targetContext: Glucose
       direction: "limited",
       message: `Latest glucose is ${latest.valueMmolL.toFixed(1)} mmol/L. Trend is limited because there is only one reading.`,
       safetyNote: targetReview.safetyNote
+    };
+  }
+
+  const elapsedHours = Math.abs(Date.parse(latest.occurredAt) - Date.parse(previous.occurredAt)) / 3600000;
+  if (elapsedHours > 12 || [latest.quality, previous.quality].some((quality) => quality === "conflicting" || quality === "missing" || quality === "suspect")) {
+    return {
+      direction: "limited",
+      message: "A directional trend is not shown because the readings are too far apart or have limited data quality.",
+      safetyNote: "Review the timestamps, sources, and quality labels with your care team before interpreting a pattern."
     };
   }
 
@@ -76,9 +85,7 @@ export function buildClinicianReviewSummary(
   const ordered = sortHealthTimeline(events);
   const glucoseTrend = deriveGlucoseTrend(ordered, targetContext, targets);
   const latestGlucose = ordered.find((event): event is GlucoseEvent => event.type === "glucose");
-  const targetReview = latestGlucose
-    ? describeGlucose(latestGlucose.valueMmolL, targetContext, targets)
-    : describeGlucose(targetContext === "fasting" ? targets.fastingMinMmolL : targets.postprandialMaxMmolL, targetContext, targets);
+  const targetReview = latestGlucose ? describeGlucose(latestGlucose.valueMmolL, targetContext, targets) : undefined;
 
   return {
     title: "Clinician review summary",
@@ -105,7 +112,7 @@ export function formatClinicianReviewSummary(summary: ClinicianReviewSummary) {
     `Events: ${summary.totalEvents} total | glucose ${summary.glucoseReadings} | meals ${summary.mealEvents} | exercise ${summary.exerciseEvents} | medication ${summary.medicationEvents}`,
     summary.latestGlucose ? `Latest glucose: ${summary.latestGlucose.valueMmolL.toFixed(1)} mmol/L (${summary.latestGlucose.compartment})` : "Latest glucose: none recorded",
     `Trend: ${summary.glucoseTrend.message}`,
-    `Target review: ${summary.targetReview.message}`,
+    `Target review: ${summary.targetReview?.message ?? "No glucose reading is available for target-context review."}`,
     `Safety note: ${summary.glucoseTrend.safetyNote}`,
     ...summary.notes.map((note) => `Note: ${note}`)
   ];

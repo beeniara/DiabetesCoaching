@@ -1,20 +1,26 @@
+import { z } from "zod";
+
 export type GlucoseContext = "fasting" | "postprandial";
 
-export type CareTargets = {
-  fastingMinMmolL: number;
-  fastingMaxMmolL: number;
-  postprandialMaxMmolL: number;
-  hba1cMaxMmolMol: number;
-  clinicianReviewed: boolean;
-};
+export const CareTargetsSchema = z.object({
+  fastingMinMmolL: z.number().finite().positive().max(40),
+  fastingMaxMmolL: z.number().finite().positive().max(40),
+  postprandialMaxMmolL: z.number().finite().positive().max(40),
+  hba1cMaxMmolMol: z.number().finite().positive().max(250),
+  clinicianReviewed: z.boolean()
+}).refine((targets) => targets.fastingMinMmolL <= targets.fastingMaxMmolL, {
+  message: "Fasting minimum must not exceed fasting maximum.",
+  path: ["fastingMaxMmolL"]
+});
+export type CareTargets = z.infer<typeof CareTargetsSchema>;
 
-export const DEFAULT_CARE_TARGETS: CareTargets = {
+export const DEFAULT_CARE_TARGETS: CareTargets = CareTargetsSchema.parse({
   fastingMinMmolL: 6.0,
   fastingMaxMmolL: 8.0,
   postprandialMaxMmolL: 10.0,
   hba1cMaxMmolMol: 53,
   clinicianReviewed: false
-};
+});
 
 export const MEDICATION_CONTEXT = {
   glipizide: "Record as prescribed. Do not offer dose or missed-dose changes; prompt pharmacist or clinician review.",
@@ -24,9 +30,10 @@ export const MEDICATION_CONTEXT = {
 } as const;
 
 export function describeGlucose(valueMmolL: number, context: GlucoseContext, targets: CareTargets) {
+  const validatedTargets = CareTargetsSchema.parse(targets);
   const inRange = context === "fasting"
-    ? valueMmolL >= targets.fastingMinMmolL && valueMmolL <= targets.fastingMaxMmolL
-    : valueMmolL < targets.postprandialMaxMmolL;
+    ? valueMmolL >= validatedTargets.fastingMinMmolL && valueMmolL <= validatedTargets.fastingMaxMmolL
+    : valueMmolL < validatedTargets.postprandialMaxMmolL;
   return {
     inRange,
     message: inRange
