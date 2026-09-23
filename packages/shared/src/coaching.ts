@@ -65,6 +65,12 @@ function localDayKey(isoTimestamp: string, timeZone: string): string {
   }
 }
 
+// Steps back one calendar date, so 23- and 25-hour daylight-saving days are never skipped or repeated.
+function previousDayKey(dayKey: string): string {
+  const [year, month, day] = dayKey.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day - 1)).toISOString().slice(0, 10);
+}
+
 export type WeeklyActivitySummary = {
   windowStart: string;
   windowEnd: string;
@@ -138,14 +144,11 @@ export function summarizeWeeklyActivity(
       .map((event) => localDayKey(event.occurredAt, timeZone))
   );
   let currentStreakDays = 0;
-  let cursor = new Date(windowEnd);
-  const todayKey = localDayKey(cursor.toISOString(), timeZone);
-  if (!allExerciseDays.has(todayKey)) cursor = new Date(cursor.getTime() - 86400000);
-  for (let index = 0; index < 365; index += 1) {
-    const key = localDayKey(cursor.toISOString(), timeZone);
-    if (!allExerciseDays.has(key)) break;
+  let dayKey = localDayKey(new Date(windowEnd).toISOString(), timeZone);
+  if (!allExerciseDays.has(dayKey)) dayKey = previousDayKey(dayKey);
+  while (allExerciseDays.has(dayKey) && currentStreakDays < 365) {
     currentStreakDays += 1;
-    cursor = new Date(cursor.getTime() - 86400000);
+    dayKey = previousDayKey(dayKey);
   }
 
   const latestExercise = events

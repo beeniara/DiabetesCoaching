@@ -30,6 +30,16 @@ function hoursAgo(hours: number) {
 describe("summarizeWeeklyActivity", () => {
   const goals = createDefaultWellnessGoals(NOW);
 
+  it("counts the streak by local calendar day across the daylight-saving change", () => {
+    // NZ clocks go forward on Sunday 27 Sep 2026, so that local day lasts only 23 hours.
+    const justAfterMidnightMonday = new Date("2026-09-27T11:30:00.000Z"); // Mon 28 Sep 00:30 NZDT
+    const monday = exercise({ occurredAt: "2026-09-27T11:10:00.000Z" }); // Mon 00:10 NZDT
+    const sunday = exercise({ occurredAt: "2026-09-26T23:00:00.000Z" }); // Sun 12:00 NZDT
+    const saturday = exercise({ occurredAt: "2026-09-26T00:00:00.000Z" }); // Sat 12:00 NZST
+    expect(summarizeWeeklyActivity([monday, sunday, saturday], goals, justAfterMidnightMonday, TZ).currentStreakDays).toBe(3);
+    expect(summarizeWeeklyActivity([monday, saturday], goals, justAfterMidnightMonday, TZ).currentStreakDays).toBe(1);
+  });
+
   it("reports an empty week safely", () => {
     const summary = summarizeWeeklyActivity([], goals, NOW, TZ);
     expect(summary.sessions).toBe(0);
