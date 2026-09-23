@@ -43,6 +43,12 @@ This file records material limitations that must remain visible. Passing reposit
 - Model availability, behaviour, price, and API schemas can change. Every response is validated, but a schema-valid response can still be factually wrong.
 - BLE, cloud, meal-recognition, and IMU features currently simulate integration behaviour. They do not connect to a real glucose meter, CGM vendor, vision service, or motion sensor.
 
+## Accessibility
+
+- Warning banner text is #8A4B08 on #FFF6E8 (6.34:1) with a #C47A19 border (3.19:1 against the banner, 3.42:1 against the card), meeting WCAG 2.1 AA for text and non-text contrast. The app has no dark theme: `userInterfaceStyle` is `automatic`, but screens always use the light palette, while system dialogs and the keyboard follow the device theme.
+- Banners use `accessibilityRole="alert"` and a polite live region. Android live-region announcement on first appearance and VoiceOver behaviour (no live-region equivalent on iOS) are unverified until the device test plan runs.
+- Tabs (42 dp) and filter pills (about 36 dp) are below the 48 dp Android touch-target recommendation; buttons meet it.
+
 ## Platform and verification
 
 - Android JavaScript export has been verified; a native signed Android build and iOS build have not. iOS native build verification requires macOS/Xcode.

@@ -64,6 +64,16 @@ export function summarizeTimeline(events: HealthEvent[], now = new Date(), unrea
   return { events: ordered, freshness, warning, latestEvent, latestGlucose, counts, unreadableCount, unreadableNotice };
 }
 
+export function describeTimelineFreshness(summary: Pick<TimelineSummary, "freshness" | "unreadableCount">): string {
+  const alsoUnreadable = summary.unreadableCount > 0 ? " Some saved records also could not be read." : "";
+  if (summary.freshness === "current") return "Data freshness status: current.";
+  if (summary.freshness === "delayed") return `Data freshness status: delayed, because the latest glucose reading arrived late or carries a sensor delay.${alsoUnreadable}`;
+  if (summary.freshness === "stale") return `Data freshness status: stale, because the latest glucose reading is more than 3 hours old.${alsoUnreadable}`;
+  return summary.unreadableCount > 0
+    ? "Data freshness status: limited, because some saved records could not be read."
+    : "Data freshness status: limited, because nothing has been logged yet.";
+}
+
 export function formatTimelineLabel(event: HealthEvent): string {
   if (event.type === "glucose") return `Glucose ${event.valueMmolL.toFixed(1)} mmol/L`;
   if (event.type === "meal") {

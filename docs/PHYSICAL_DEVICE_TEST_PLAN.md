@@ -65,6 +65,9 @@ The storage queries, migrations, and messages above were verified in development
 - Complete the main tasks with VoiceOver and TalkBack: consent, log glucose, inspect limitations, create/acknowledge reminder, queue/delete photo, export, and delete data.
 - Test the largest supported text size, display zoom, landscape where enabled, dark/light themes, contrast, focus order, labels, error announcements, and touch target sizes.
 - Confirm critical limitations do not rely on colour alone and remain visible without scrolling past an action that depends on them.
+- Warning banners (unreadable records, blocked notifications, unreadable plans, incomplete wellbeing review): TalkBack reads them as an alert with the "Warning:" prefix and the full message in one stop; record whether TalkBack announces a banner when it first appears (Android live region) and whether VoiceOver only reads it on focus (iOS has no live-region equivalent).
+- The header freshness indicator is read as "Data freshness status: …" with its reason, and a non-current status shows as a ring, not only a different colour.
+- **Remove unreadable plans** and other buttons meet the 48 dp minimum height; tabs (42 dp) and filter pills (about 36 dp) are still below 48 dp and need a decision.
 - Conduct a comprehension session with representative users and clinicians for target context, freshness, quality, uncertainty, reminder limits, and escalation wording.
 
 ## 7. Release evidence

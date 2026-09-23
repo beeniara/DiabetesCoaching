@@ -11,7 +11,7 @@ import { addGlucoseEntry, addMedicationEntry, acceptConsent, deleteAllLocalRecor
 import { clearLocalServerSettings, getLocalServerSettings, saveLocalServerSettings, type LocalServerSettingsRecord } from "./src/local-server-storage";
 import { normalizeLocalServerBaseUrl, sendShelfAnalysisToLocalServer, testLocalServerConnection } from "./src/local-server";
 import { cancelAllMedicationReminders, cancelMedicationReminder, cancelRemindersForUnreadablePlans, configureMedicationNotifications, getMedicationNotificationCapability, MEDICATION_ACTION_SKIPPED, MEDICATION_ACTION_SNOOZE, MEDICATION_ACTION_TAKEN, reconcileMedicationReminders, scheduleMedicationSnooze, syncMedicationReminderWithOptions } from "./src/reminders";
-import { formatTimelineLabel, summarizeTimeline } from "../../packages/shared/src/timeline";
+import { describeTimelineFreshness, formatTimelineLabel, summarizeTimeline } from "../../packages/shared/src/timeline";
 import { normalizeHealthEvent, safeGlucoseDisplay, type ExerciseCategory, type ExerciseEvent, type GlucoseCompartment, type HealthEvent, type MedicationEvent } from "../../packages/shared/src/health-events";
 import { buildEncouragement, createDefaultWellnessGoals, GUIDELINE_SOURCES, pickDailyTip, REGULAR_CHECKS, SEEK_HELP_SIGNS, suggestTipsForWeek, summarizeWeeklyActivity, WellnessGoalsSchema, type WellnessGoals } from "../../packages/shared/src/coaching";
 import { formatCheckInLabel, parseWellbeingCheckIn, reviewWellbeing, type MoodLevel, type StressLevel, type WellbeingCheckIn } from "../../packages/shared/src/wellbeing";
@@ -110,6 +110,15 @@ function formatDateTime(value: string) {
     timeStyle: "short",
     timeZoneName: "short"
   }).format(new Date(value));
+}
+
+// Read as one alert so screen readers announce the whole limitation, prefixed with "Warning".
+function WarningBanner({ message }: { message: string }) {
+  return (
+    <View accessible accessibilityRole="alert" accessibilityLiveRegion="polite" accessibilityLabel={`Warning: ${message}`} style={styles.warningBanner}>
+      <Text style={styles.warningBannerText}>{message}</Text>
+    </View>
+  );
 }
 
 function createHealthEventId(prefix: string) {
@@ -1047,7 +1056,12 @@ export default function App() {
           <Text style={styles.kicker}>Diabetes coaching</Text>
           <Text style={styles.appTitle}>Koru Companion</Text>
         </View>
-        <View style={[styles.freshnessDot, timeline.freshness === "current" ? styles.dotCurrent : styles.dotLimited]} />
+        <View
+          accessible
+          accessibilityRole="image"
+          accessibilityLabel={describeTimelineFreshness(timeline)}
+          style={[styles.freshnessDot, timeline.freshness === "current" ? styles.dotCurrent : styles.dotLimited]}
+        />
       </View>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabBar}>
         {([
@@ -1197,8 +1211,8 @@ export default function App() {
           <Text style={styles.cardTitle}>Glucose freshness</Text>
           <Text style={styles.metric}>{latestGlucoseCard?.label ?? "No glucose recorded"}</Text>
           <Text style={styles.bodyText}>{timeline.warning}</Text>
-          {timeline.unreadableNotice ? <Text style={styles.warningText}>{timeline.unreadableNotice}</Text> : null}
-          <Text style={styles.muted}>Timeline freshness: {timeline.freshness}</Text>
+          {timeline.unreadableNotice ? <WarningBanner message={timeline.unreadableNotice} /> : null}
+          <Text style={styles.muted}>{describeTimelineFreshness(timeline)}</Text>
           <Text style={styles.muted}>Capillary reading: {timeline.latestGlucose?.compartment === "capillary-blood" ? "yes" : "no"}</Text>
           <Text style={styles.muted}>Cloud and physiological delay are labeled separately.</Text>
         </View>
@@ -1369,7 +1383,7 @@ export default function App() {
             ) : null}
           </View>
           <Text style={styles.muted}>Notification permission: {capability?.status ?? "checking"}. Can ask again: {capability?.canAskAgain ? "yes" : "no"}.</Text>
-          {capability ? <Text style={capability.granted ? styles.muted : styles.warningText}>{capability.permissionMessage}</Text> : null}
+          {capability ? capability.granted ? <Text style={styles.muted}>{capability.permissionMessage}</Text> : <WarningBanner message={capability.permissionMessage} /> : null}
           <Text style={styles.muted}>{capability ? capability.exactAlarmNote : "Notification capability is being checked."}</Text>
         </View>
 
@@ -1377,7 +1391,7 @@ export default function App() {
           <Text style={styles.cardTitle}>Reminder plans</Text>
           {unreadablePlanCount > 0 ? (
             <>
-              <Text style={styles.warningText}>{describeUnreadableMedicationPlans(unreadablePlanCount)}</Text>
+              <WarningBanner message={describeUnreadableMedicationPlans(unreadablePlanCount) ?? ""} />
               <Pressable accessibilityRole="button" style={styles.dangerButton} onPress={confirmRemoveUnreadablePlans}>
                 <Text style={styles.dangerButtonText}>Remove unreadable plans</Text>
               </Pressable>
@@ -1641,7 +1655,7 @@ export default function App() {
           <Pressable accessibilityRole="button" style={styles.primaryButton} onPress={handleSaveCheckIn}>
             <Text style={styles.primaryButtonText}>Save check-in</Text>
           </Pressable>
-          {wellbeingReview.unreadableNotice ? <Text style={styles.warningText}>{wellbeingReview.unreadableNotice}</Text> : null}
+          {wellbeingReview.unreadableNotice ? <WarningBanner message={wellbeingReview.unreadableNotice} /> : null}
           {wellbeingReview.messages.length > 0 ? (
             <View style={styles.issueBox}>
               {wellbeingReview.messages.map((message) => <Text key={message} style={styles.issueText}>• {message}</Text>)}
@@ -1755,7 +1769,7 @@ const styles = StyleSheet.create({
   appTitle: { color: colors.text, fontSize: 25, lineHeight: 30, fontWeight: "800" },
   freshnessDot: { width: 12, height: 12, borderRadius: 6 },
   dotCurrent: { backgroundColor: "#27845E" },
-  dotLimited: { backgroundColor: "#C47A19" },
+  dotLimited: { backgroundColor: "transparent", borderWidth: 3, borderColor: "#C47A19" },
   tabBar: { paddingHorizontal: 16, paddingBottom: 10, gap: 8, backgroundColor: colors.page },
   tab: { minHeight: 42, justifyContent: "center", paddingHorizontal: 14, borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card },
   tabActive: { minHeight: 42, justifyContent: "center", paddingHorizontal: 14, borderRadius: 14, borderWidth: 1, borderColor: colors.accent, backgroundColor: colors.accent },
@@ -1776,7 +1790,8 @@ const styles = StyleSheet.create({
   cardTitle: { color: colors.text, fontWeight: "800", fontSize: 18 },
   bodyText: { color: colors.text, lineHeight: 20 },
   muted: { color: colors.muted, fontSize: 13, lineHeight: 18 },
-  warningText: { color: colors.warning, fontSize: 13, lineHeight: 18, fontWeight: "700" },
+  warningBanner: { backgroundColor: "#FFF6E8", borderColor: "#C47A19", borderWidth: 1, borderRadius: 12, padding: 12 },
+  warningBannerText: { color: colors.warning, fontSize: 13, lineHeight: 18, fontWeight: "700" },
   metric: { color: colors.text, fontSize: 24, fontWeight: "800" },
   label: { color: colors.text, fontWeight: "700" },
   fieldGroup: { gap: 6 },
@@ -1785,11 +1800,11 @@ const styles = StyleSheet.create({
   row: { flexDirection: "row", gap: 10, flexWrap: "wrap" },
   rowWrap: { flexDirection: "row", gap: 8, flexWrap: "wrap" },
   flexOne: { flex: 1, minWidth: 120 },
-  primaryButton: { backgroundColor: colors.accent, paddingVertical: 12, paddingHorizontal: 14, borderRadius: 12, minHeight: 44, justifyContent: "center" },
+  primaryButton: { backgroundColor: colors.accent, paddingVertical: 12, paddingHorizontal: 14, borderRadius: 12, minHeight: 48, justifyContent: "center" },
   primaryButtonText: { color: "#FFFFFF", fontWeight: "800" },
-  secondaryButton: { backgroundColor: colors.accentSoft, paddingVertical: 12, paddingHorizontal: 14, borderRadius: 12, minHeight: 44, justifyContent: "center" },
+  secondaryButton: { backgroundColor: colors.accentSoft, paddingVertical: 12, paddingHorizontal: 14, borderRadius: 12, minHeight: 48, justifyContent: "center" },
   secondaryButtonText: { color: colors.accent, fontWeight: "800" },
-  dangerButton: { backgroundColor: "#FCE8E6", paddingVertical: 12, paddingHorizontal: 14, borderRadius: 12, minHeight: 44, justifyContent: "center" },
+  dangerButton: { backgroundColor: "#FCE8E6", paddingVertical: 12, paddingHorizontal: 14, borderRadius: 12, minHeight: 48, justifyContent: "center" },
   dangerButtonText: { color: "#9B2C22", fontWeight: "800" },
   pill: { borderWidth: 1, borderColor: colors.border, borderRadius: 999, paddingVertical: 8, paddingHorizontal: 12, backgroundColor: "#FBFCFB" },
   pillActive: { borderWidth: 1, borderColor: colors.accent, borderRadius: 999, paddingVertical: 8, paddingHorizontal: 12, backgroundColor: colors.accentSoft },
