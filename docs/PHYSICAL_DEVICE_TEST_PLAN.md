@@ -63,6 +63,7 @@ The storage queries, migrations, and messages above were verified in development
 ## 6. Accessibility and usability
 
 - Complete the main tasks with VoiceOver and TalkBack: consent, log glucose, inspect limitations, create/acknowledge reminder, queue/delete photo, export, and delete data.
+- On Android (edge-to-edge) and on iPhones with a notch or Dynamic Island, confirm the header is never under the status bar or camera cutout, the last item on each tab scrolls clear of the gesture/navigation bar, and status-bar icons stay dark and legible with the device in dark mode, in portrait and landscape.
 - Test the largest supported text size, display zoom, landscape where enabled, dark/light themes, contrast, focus order, labels, error announcements, and touch target sizes.
 - Confirm critical limitations do not rely on colour alone and remain visible without scrolling past an action that depends on them.
 - Warning banners (unreadable records, blocked notifications, unreadable plans, incomplete wellbeing review): TalkBack reads them as an alert with the "Warning:" prefix and the full message in one stop; record whether TalkBack announces a banner when it first appears (Android live region) and whether VoiceOver only reads it on focus (iOS has no live-region equivalent).

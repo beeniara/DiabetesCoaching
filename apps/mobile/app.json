@@ -45,6 +45,6 @@
         "NSPhotoLibraryAddUsageDescription": "Save queued shelf photos locally when you confirm capture."
       }
     },
-    "userInterfaceStyle": "automatic"
+    "userInterfaceStyle": "light"
   }
 }

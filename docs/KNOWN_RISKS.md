@@ -45,7 +45,7 @@ This file records material limitations that must remain visible. Passing reposit
 
 ## Accessibility
 
-- Warning banner text is #8A4B08 on #FFF6E8 (6.34:1) with a #C47A19 border (3.19:1 against the banner, 3.42:1 against the card), meeting WCAG 2.1 AA for text and non-text contrast. The app has no dark theme: `userInterfaceStyle` is `automatic`, but screens always use the light palette, while system dialogs and the keyboard follow the device theme.
+- Warning banner text is #8A4B08 on #FFF6E8 (6.34:1) with a #C47A19 border (3.19:1 against the banner, 3.42:1 against the card), meeting WCAG 2.1 AA for text and non-text contrast. The app has no dark theme, so `userInterfaceStyle` is `light`: status-bar icons, system dialogs, and the keyboard stay light to match the screens even when the device uses dark mode.
 - Banners use `accessibilityRole="alert"` and a polite live region. Android live-region announcement on first appearance and VoiceOver behaviour (no live-region equivalent on iOS) are unverified until the device test plan runs.
 
 ## Platform and verification
@@ -53,7 +53,7 @@ This file records material limitations that must remain visible. Passing reposit
 - Android JavaScript export has been verified; a native signed Android build and iOS build have not. iOS native build verification requires macOS/Xcode.
 - Camera, library access, notification actions, cold starts, exact alarms, reboot, idle modes, timezone changes, large text, and screen readers require physical-device testing.
 - Automated UI/end-to-end tests are not yet present. Shared rules (including reminder reconciliation decisions and notification capability reporting) and server endpoints have automated coverage, while the native notification calls and mobile flow are protected only by strict compilation and bundle checks.
-- The dependency audit currently includes moderate advisories in Expo's build-tool dependency chain. The automated audit proposes an incompatible old Expo downgrade rather than a forward fix; monitor upstream releases and reassess before shipping. There are no known high or critical advisories in the checked tree.
+- The dependency audit currently includes moderate advisories in Expo's build-tool dependency chain. The automated audit proposes an incompatible old Expo downgrade rather than a forward fix; monitor upstream releases and reassess before shipping. Two high-severity advisories are now reported in Expo's native build tooling (`@xmldom/xmldom` via `@expo/plist`/`plist`, and `js-yaml` via `@expo/xcpretty`). They run at build time on the developer machine, not in the shipped app, but must be rechecked and resolved or accepted before release.
 
 ## Release gate
 

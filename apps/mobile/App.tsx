@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { Alert, Image, Linking, Pressable, SafeAreaView, ScrollView, Share, StyleSheet, Text, TextInput, View } from "react-native";
+import { Alert, Image, Linking, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import * as ImagePicker from "expo-image-picker";
 import * as Notifications from "expo-notifications";
 import { CareTargetsSchema, DEFAULT_CARE_TARGETS, type CareTargets, type GlucoseContext } from "../../packages/shared/src/clinical";
