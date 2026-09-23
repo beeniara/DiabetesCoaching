@@ -111,6 +111,13 @@ coding. Work in explicit phases, running `npm run check` (or the relevant
 workspace's tests/typecheck) after each phase, and report changed files,
 results, remaining risks, and the next recommended phase.
 
+Owner preference: when a review or investigation finds a concrete defect,
+fix it in the same pass instead of stopping to ask whether to fix it. Add a
+regression test where the logic is testable, run `npm run check` and the
+mobile bundle smoke check, then report what was fixed. This does not relax
+the safety and data rules above; anything needing clinical, privacy, or
+product judgement still goes to the owner.
+
 Track implementation status, safety assumptions, and known limitations in
 [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md),
 [docs/WORK_ITEMS.md](docs/WORK_ITEMS.md), and
