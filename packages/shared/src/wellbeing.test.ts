@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatCheckInLabel, parseWellbeingCheckIn, reviewWellbeing, type WellbeingCheckIn } from "./wellbeing";
+import { formatCheckInLabel, parseStoredWellbeingCheckIns, parseWellbeingCheckIn, reviewWellbeing, type WellbeingCheckIn } from "./wellbeing";
 
 const NOW = new Date("2026-09-18T04:00:00.000Z");
 
@@ -67,5 +67,31 @@ describe("formatCheckInLabel", () => {
   it("summarises the recorded fields", () => {
     expect(formatCheckInLabel(checkIn({ occurredAt: daysAgo(0), sleepHours: 7, mood: "okay", footCheckDone: true }))).toBe("sleep 7 h · mood okay · feet checked");
     expect(formatCheckInLabel(checkIn({ occurredAt: daysAgo(0), notes: "Long day at work" }))).toBe("Long day at work");
+  });
+});
+
+describe("unreadable stored check-ins", () => {
+  it("counts corrupt or schema-invalid rows instead of dropping them silently", () => {
+    const result = parseStoredWellbeingCheckIns([
+      JSON.stringify(checkIn({ occurredAt: daysAgo(1), mood: "good" })),
+      "{not json",
+      JSON.stringify(checkIn({ occurredAt: daysAgo(2), sleepHours: 30 }))
+    ]);
+    expect(result.checkIns).toHaveLength(1);
+    expect(result.unreadableCount).toBe(2);
+  });
+
+  it("warns that the review may be incomplete and withholds claims based on absence", () => {
+    const readable = [checkIn({ occurredAt: daysAgo(1), mood: "good" })];
+    expect(reviewWellbeing(readable, NOW).messages.join(" ")).toContain("No foot checks");
+    expect(reviewWellbeing(readable, NOW).unreadableNotice).toBeUndefined();
+
+    const incomplete = reviewWellbeing(readable, NOW, 7, 1);
+    expect(incomplete.unreadableNotice).toContain("1 saved check-in could not be read");
+    expect(incomplete.messages.join(" ")).not.toContain("No foot checks");
+
+    const nothingReadable = reviewWellbeing([], NOW, 7, 2);
+    expect(nothingReadable.messages.join(" ")).not.toContain("No check-ins");
+    expect(nothingReadable.unreadableNotice).toContain("2 saved check-ins could not be read");
   });
 });

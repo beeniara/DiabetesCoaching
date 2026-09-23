@@ -56,7 +56,37 @@ export function describeMedicationPlanStatus(plan: MedicationPlan, deviceTimezon
 
 export function describeUnreadableMedicationPlans(count: number): string | undefined {
   if (count <= 0) return undefined;
-  return `${count} saved reminder ${count === 1 ? "plan could not be read and is" : "plans could not be read and are"} not listed. A device reminder created earlier may still appear, so do not treat this list as complete.`;
+  return `${count} saved reminder ${count === 1 ? "plan could not be read and is" : "plans could not be read and are"} not listed. A device reminder created earlier may still appear, so do not treat this list as complete. Use "Remove unreadable plans" to cancel those reminders.`;
+}
+
+export type UnreadablePlanRef = { id: string; notificationId?: string };
+export type ScheduledReminderSnapshot = { identifier: string; data?: Record<string, unknown> | null };
+
+export function selectRemindersForUnreadablePlans(
+  scheduled: ScheduledReminderSnapshot[],
+  readablePlans: MedicationPlan[],
+  unreadablePlans: UnreadablePlanRef[]
+): string[] {
+  const readableNotificationIds = new Set(readablePlans.flatMap((plan) => (plan.notificationId ? [plan.notificationId] : [])));
+  const readablePlanIds = new Set(readablePlans.map((plan) => plan.id));
+  const unreadablePlanIds = new Set(unreadablePlans.map((plan) => plan.id));
+  const selected = new Set(unreadablePlans.flatMap((plan) => (plan.notificationId ? [plan.notificationId] : [])));
+
+  for (const request of scheduled) {
+    if (request.data?.kind !== "medication-reminder") continue;
+    const planId = typeof request.data.planId === "string" ? request.data.planId : "";
+    const belongsToUnreadablePlan = unreadablePlanIds.has(planId);
+    // A reminder whose plan no longer exists at all, e.g. a plan deleted while its cancel failed.
+    const belongsToMissingPlan = planId !== "" && !readablePlanIds.has(planId);
+    if (belongsToUnreadablePlan || belongsToMissingPlan) selected.add(request.identifier);
+  }
+
+  for (const identifier of readableNotificationIds) selected.delete(identifier);
+  for (const request of scheduled) {
+    const planId = typeof request.data?.planId === "string" ? request.data.planId : "";
+    if (readablePlanIds.has(planId)) selected.delete(request.identifier);
+  }
+  return [...selected];
 }
 
 export type ReminderSyncAction =

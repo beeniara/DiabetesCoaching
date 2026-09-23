@@ -7,7 +7,7 @@ Record the app build, device model, OS version, locale, timezone, tester, date, 
 - Fresh install shows no invented glucose value or personal history.
 - Logging, reminder creation, and photo intake are blocked before consent.
 - Accepting consent survives a normal restart; revoking it blocks new collection and disables/cancels reminder plans.
-- Create one event of every type, edit targets, create a reminder, queue a photo, then confirm **Delete all local data** removes the profile, events, target overrides, plans, scheduled notifications, shelf records/photos, and secure server token.
+- Create one event of every type, edit targets, create a reminder, queue a photo, then confirm **Delete all local data** removes the profile, events, target overrides, plans, scheduled notifications (including pending snoozes and reminders from unreadable plans), wellbeing check-ins and goals from both storage and the screen, shelf records/photos, and secure server token.
 - Force-close the app during deletion where test tooling permits, relaunch, and verify any remaining state is reported and can be deleted safely.
 - Verify airplane-mode startup, logging, timeline, reminders, and export work without the server.
 
@@ -17,6 +17,22 @@ Record the app build, device model, OS version, locale, timezone, tester, date, 
 - Run BLE, cloud, meal, IMU, combined, duplicate, conflict, and rate-limit simulations; verify source, timestamps, quality, freshness, lag, conflict, and issue labels.
 - Change the device clock/timezone and verify occurrence/receipt times remain intelligible and reminder schedules reconcile on the next launch.
 - Share the clinician-review summary only by explicit action; verify its destination and deletion controls.
+
+## 2a. Unreadable stored records
+
+Use a debuggable build (Android Studio **App Inspection > Database Inspector**, or `adb shell run-as <package> sqlite3 databases/diabetes-coaching.db`). With valid records present, corrupt one row at a time, relaunch the app, and record the result:
+
+| Corruption | Expected result |
+| --- | --- |
+| `UPDATE health_events SET payload_json = '{not json' WHERE id = '<id>'` | Home glucose card shows the amber "saved record could not be read" warning; freshness reads `limited` even when the newest readable reading is current; the timeline lists only readable events. |
+| Same, then generate the clinician-review export | Export includes "N saved records could not be read and are not included, so this summary may be incomplete." |
+| `UPDATE medication_plans SET reminder_hour = 99 WHERE id = '<id>'` for a plan with a scheduled reminder | Reminders tab shows the unreadable-plan warning and **Remove unreadable plans**; it does not say "No reminder plans saved yet". The corrupted plan's notification still fires until removal. |
+| Then tap **Remove unreadable plans** and confirm | The corrupted plan's daily reminder and any pending snooze are cancelled (check the scheduled-notification list and wait past the scheduled time); readable plans keep their reminders; the warning disappears. |
+| `UPDATE wellbeing_checkins SET payload_json = 'garbage' WHERE id = '<id>'` | Coach tab shows the incomplete-review warning and does not claim "No check-ins" or "No foot checks" for the week. |
+
+Repeat once with **Delete all local data** instead of **Remove unreadable plans** and confirm no reminder from the corrupted plan fires afterwards.
+
+The storage queries, migrations, and messages above were verified in development against a real SQLite database through the app's storage layer. The native SQLite driver, screen rendering, and notification cancellation have not been verified on a device.
 
 ## 3. Notifications
 

@@ -3,8 +3,8 @@ import { HealthEventSchema, parseStoredHealthEvents, type HealthEvent, type Gluc
 import { CareTargetsSchema, DEFAULT_CARE_TARGETS, type CareTargets } from "../../../packages/shared/src/clinical";
 import { ShelfAnalysisSchema, type ShelfAnalysis } from "../../../packages/shared/src/shelf-analysis";
 import { createDefaultUserProfile, markConsentAccepted, UserProfileSchema, type UserProfile } from "../../../packages/shared/src/profile";
-import { MedicationPlanSchema, type MedicationPlan } from "../../../packages/shared/src/medication-plans";
-import { WellbeingCheckInSchema, type WellbeingCheckIn } from "../../../packages/shared/src/wellbeing";
+import { MedicationPlanSchema, type MedicationPlan, type UnreadablePlanRef } from "../../../packages/shared/src/medication-plans";
+import { parseStoredWellbeingCheckIns, WellbeingCheckInSchema, type WellbeingCheckIn } from "../../../packages/shared/src/wellbeing";
 import { createDefaultWellnessGoals, WellnessGoalsSchema, type WellnessGoals } from "../../../packages/shared/src/coaching";
 
 const DATABASE_VERSION = 4;
@@ -254,7 +254,7 @@ export async function addMedicationEntry(db: SQLite.SQLiteDatabase, event: Medic
   await saveHealthEvent(db, event);
 }
 
-export async function listMedicationPlans(db: SQLite.SQLiteDatabase): Promise<{ plans: MedicationPlan[]; unreadableCount: number }> {
+export async function listMedicationPlans(db: SQLite.SQLiteDatabase): Promise<{ plans: MedicationPlan[]; unreadablePlans: UnreadablePlanRef[] }> {
   const rows = await db.getAllAsync<{
     id: string;
     user_id: string;
@@ -288,7 +288,11 @@ export async function listMedicationPlans(db: SQLite.SQLiteDatabase): Promise<{ 
     });
     return parsed.success ? [parsed.data] : [];
   });
-  return { plans, unreadableCount: rows.length - plans.length };
+  const readableIds = new Set(plans.map((plan) => plan.id));
+  const unreadablePlans = rows
+    .filter((row) => !readableIds.has(row.id))
+    .map((row) => ({ id: row.id, notificationId: typeof row.notification_id === "string" && row.notification_id ? row.notification_id : undefined }));
+  return { plans, unreadablePlans };
 }
 
 export async function getCareTargets(db: SQLite.SQLiteDatabase): Promise<CareTargets> {
@@ -424,18 +428,11 @@ export async function saveWellbeingCheckIn(db: SQLite.SQLiteDatabase, checkIn: W
   );
 }
 
-export async function listWellbeingCheckIns(db: SQLite.SQLiteDatabase, limit = 60): Promise<WellbeingCheckIn[]> {
+export async function listWellbeingCheckIns(db: SQLite.SQLiteDatabase, limit = 60): Promise<{ checkIns: WellbeingCheckIn[]; unreadableCount: number }> {
   const rows = await db.getAllAsync<{ payload_json: string }>(
     "SELECT payload_json FROM wellbeing_checkins ORDER BY occurred_at DESC LIMIT ?", limit
   );
-  return rows.flatMap((row) => {
-    try {
-      const parsed = WellbeingCheckInSchema.safeParse(JSON.parse(row.payload_json));
-      return parsed.success ? [parsed.data] : [];
-    } catch {
-      return [];
-    }
-  });
+  return parseStoredWellbeingCheckIns(rows.map((row) => row.payload_json));
 }
 
 export async function deleteWellbeingCheckIn(db: SQLite.SQLiteDatabase, id: string) {

@@ -21,6 +21,18 @@ This checklist records the current release boundary for the diabetes coaching ap
 - Treat interstitial-fluid glucose as potentially lagged during rapid change, meals, and exercise.
 - Keep reminder scheduling dependent on OS permissions and device verification, not background assumptions.
 
+## Data completeness (for clinician review)
+
+Stored records that can no longer be read (for example after storage corruption or an incompatible legacy row) are excluded from display but never hidden silently:
+
+- The dashboard warns that the timeline and latest reading may be incomplete and reports freshness as `limited` rather than `current`.
+- The clinician-review export states how many saved records were not included.
+- Stored conflict labels survive reload, conflicting readings are flagged per glucose compartment even with other events logged between them, and trends never compare capillary with interstitial readings.
+- The weekly wellbeing review warns that it may be incomplete and withholds "no check-ins" and "no foot checks" prompts that could be false.
+- Unreadable reminder plans are reported, and the person can cancel their device reminders and remove them. Readable plans are never changed by that action.
+
+Questions for the New Zealand clinical reviewer: is the incomplete-data wording clear enough in the export, and should an export with unreadable records carry a stronger caution or be blocked?
+
 ## Usability and accessibility
 
 - Keep freshness, estimates, and limitations visible in the UI.

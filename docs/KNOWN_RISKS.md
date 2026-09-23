@@ -6,7 +6,7 @@ This file records material limitations that must remain visible. Passing reposit
 
 - No independent New Zealand clinical review has been performed. Default target context, warning thresholds, escalation copy, and Healthline/111 placement require approval before use with real patients.
 - The app is decision support only. It must not be marketed or configured as a diagnostic, dosing, medication-management, or emergency system.
-- Unreadable stored health events and reminder plans are counted and shown as a data-completeness warning. Unreadable wellbeing check-ins are still omitted without a warning, so the wellbeing review may be based on fewer check-ins than were saved.
+- Unreadable stored health events, reminder plans, and wellbeing check-ins are counted and shown as data-completeness warnings. This behaviour is verified against real SQLite through the storage layer in development, not yet on a physical device (see the device test plan section 2a).
 - Manual entries and mock data can be wrong. Quality labels reduce ambiguity but do not prove measurement accuracy or device provenance.
 - The clinician-review export is plain text selected by the user. The receiving application and user control its protection after sharing.
 
@@ -20,7 +20,7 @@ This file records material limitations that must remain visible. Passing reposit
 ## Notification reliability
 
 - Local notifications are best-effort. Permission denial, Android exact-alarm policy, Doze/idle modes, battery optimization, force-stop, reboot, timezone changes, OEM restrictions, and iOS scheduling limits can delay or suppress them.
-- A saved reminder plan that can no longer be read is not listed and cannot be edited or cancelled from the app. Its device notification may still fire; the Reminders tab warns about this, but only full local deletion or the operating system's notification settings stop it.
+- A saved reminder plan that can no longer be read is not listed and cannot be edited. Its device notification may still fire until the person uses **Remove unreadable plans** or full local deletion. If the device scheduler cannot be queried, a pending snooze from that plan may survive removal; the app says so and points to the operating system's notification settings.
 - The app reports known capabilities and reconciles identifiers, but Expo cannot guarantee or continuously prove exact delivery. Medication reminders must never be the only safety mechanism.
 
 ## Privacy and local storage

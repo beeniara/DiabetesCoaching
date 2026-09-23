@@ -1,6 +1,6 @@
 import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
-import { describeNotificationCapability, planMedicationReminderSync, type MedicationPlan } from "../../../packages/shared/src/medication-plans";
+import { describeNotificationCapability, planMedicationReminderSync, selectRemindersForUnreadablePlans, type MedicationPlan, type UnreadablePlanRef } from "../../../packages/shared/src/medication-plans";
 
 export const MEDICATION_REMINDER_CATEGORY = "medication-reminder";
 export const MEDICATION_ACTION_TAKEN = "medication-taken";
@@ -74,6 +74,12 @@ export async function scheduleMedicationSnooze(name: string, planId?: string) {
 export async function cancelMedicationReminder(notificationId?: string) {
   if (!notificationId) return;
   await Notifications.cancelScheduledNotificationAsync(notificationId);
+}
+
+// The app schedules nothing but medication reminders, so this also clears snoozes and
+// reminders left by plans that can no longer be read.
+export async function cancelAllMedicationReminders() {
+  await Notifications.cancelAllScheduledNotificationsAsync();
 }
 
 export async function syncMedicationReminder(plan: MedicationPlan, deviceTimezone: string) {
@@ -152,4 +158,28 @@ export async function reconcileMedicationReminders(
     }
   }
   return { plans: reconciled, issues };
+}
+
+export async function cancelRemindersForUnreadablePlans(readablePlans: MedicationPlan[], unreadablePlans: UnreadablePlanRef[]) {
+  let scheduled: Notifications.NotificationRequest[] = [];
+  let verified = true;
+  try {
+    scheduled = await Notifications.getAllScheduledNotificationsAsync();
+  } catch {
+    verified = false;
+  }
+  const identifiers = selectRemindersForUnreadablePlans(
+    scheduled.map((request) => ({ identifier: request.identifier, data: request.content.data })),
+    readablePlans,
+    unreadablePlans
+  );
+  let failed = 0;
+  for (const identifier of identifiers) {
+    try {
+      await Notifications.cancelScheduledNotificationAsync(identifier);
+    } catch {
+      failed += 1;
+    }
+  }
+  return { cancelled: identifiers.length - failed, failed, verified };
 }

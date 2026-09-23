@@ -6,6 +6,7 @@ import {
   describeUnreadableMedicationPlans,
   medicationPlanNeedsReschedule,
   planMedicationReminderSync,
+  selectRemindersForUnreadablePlans,
   type MedicationPlan
 } from "./medication-plans";
 
@@ -96,5 +97,44 @@ describe("notification capability reporting", () => {
     const blocked = describeNotificationCapability({ status: "denied", granted: false, canAskAgain: false }, "android");
     expect(blocked.canSchedule).toBe(false);
     expect(blocked.permissionMessage).toContain("device settings");
+  });
+});
+
+describe("cleanup of reminders left by unreadable plans", () => {
+  const reminder = (identifier: string, planId?: string) => ({ identifier, data: { kind: "medication-reminder", medicationName: "x", planId: planId ?? "" } });
+
+  it("cancels the daily reminder and snoozes of an unreadable plan", () => {
+    const selected = selectRemindersForUnreadablePlans(
+      [reminder("ghost-daily", "ghost"), reminder("ghost-snooze", "ghost")],
+      [scheduled],
+      [{ id: "ghost", notificationId: "ghost-daily" }]
+    );
+    expect(selected.sort()).toEqual(["ghost-daily", "ghost-snooze"]);
+  });
+
+  it("cancels an unreadable plan's stored notification even when the scheduler list is unavailable", () => {
+    expect(selectRemindersForUnreadablePlans([], [scheduled], [{ id: "ghost", notificationId: "ghost-daily" }])).toEqual(["ghost-daily"]);
+  });
+
+  it("cancels reminders whose plan no longer exists at all", () => {
+    expect(selectRemindersForUnreadablePlans([reminder("left-over", "deleted-plan")], [scheduled], [])).toEqual(["left-over"]);
+  });
+
+  it("never cancels a readable plan's reminders or snoozes", () => {
+    const selected = selectRemindersForUnreadablePlans(
+      [reminder("native-1", "plan-1"), reminder("plan-1-snooze", "plan-1"), reminder("ghost-daily", "ghost")],
+      [scheduled],
+      [{ id: "ghost", notificationId: "native-1" }]
+    );
+    expect(selected).toEqual(["ghost-daily"]);
+  });
+
+  it("leaves reminders it cannot attribute to a plan, and ignores other notification kinds", () => {
+    const selected = selectRemindersForUnreadablePlans(
+      [reminder("unattributed-snooze"), { identifier: "other", data: { kind: "something-else", planId: "ghost" } }],
+      [scheduled],
+      [{ id: "ghost" }]
+    );
+    expect(selected).toEqual([]);
   });
 });

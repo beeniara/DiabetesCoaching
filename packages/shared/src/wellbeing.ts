@@ -41,8 +41,28 @@ export function parseWellbeingCheckIn(input: unknown, now = new Date()): { check
   return { checkIn };
 }
 
+export function parseStoredWellbeingCheckIns(payloads: string[]): { checkIns: WellbeingCheckIn[]; unreadableCount: number } {
+  const checkIns: WellbeingCheckIn[] = [];
+  let unreadableCount = 0;
+  for (const payload of payloads) {
+    let candidate: unknown;
+    try {
+      candidate = JSON.parse(payload);
+    } catch {
+      unreadableCount += 1;
+      continue;
+    }
+    const parsed = WellbeingCheckInSchema.safeParse(candidate);
+    if (parsed.success) checkIns.push(parsed.data);
+    else unreadableCount += 1;
+  }
+  return { checkIns, unreadableCount };
+}
+
 export type WellbeingReview = {
   checkInsInWindow: number;
+  unreadableCount: number;
+  unreadableNotice?: string;
   averageSleepHours?: number;
   shortSleepNights: number;
   highStressDays: number;
@@ -53,7 +73,7 @@ export type WellbeingReview = {
 
 const MOOD_ORDER: Record<MoodLevel, number> = { low: 0, flat: 1, okay: 2, good: 3, great: 4 };
 
-export function reviewWellbeing(checkIns: WellbeingCheckIn[], now = new Date(), windowDays = 7): WellbeingReview {
+export function reviewWellbeing(checkIns: WellbeingCheckIn[], now = new Date(), windowDays = 7, unreadableCount = 0): WellbeingReview {
   const windowStart = now.getTime() - windowDays * 86400000;
   const recent = checkIns.filter((checkIn) => {
     const at = Date.parse(checkIn.occurredAt);
@@ -69,7 +89,9 @@ export function reviewWellbeing(checkIns: WellbeingCheckIn[], now = new Date(), 
   const footChecksDone = recent.filter((checkIn) => checkIn.footCheckDone === true).length;
 
   const messages: string[] = [];
-  if (recent.length === 0) {
+  // Absence claims are unreliable when saved check-ins could not be read.
+  const complete = unreadableCount === 0;
+  if (recent.length === 0 && complete) {
     messages.push("No check-ins in the last week yet. A quick daily check-in helps you and your care team see patterns.");
   }
   if (averageSleepHours !== undefined && averageSleepHours < 7 && sleepValues.length >= 3) {
@@ -81,10 +103,13 @@ export function reviewWellbeing(checkIns: WellbeingCheckIn[], now = new Date(), 
   if (lowMoodDays >= 4) {
     messages.push("Mood has been low on most logged days. Living with diabetes can be tiring; your GP, diabetes nurse, or a helpline can support you, and it is okay to ask.");
   }
-  if (recent.length > 0 && footChecksDone === 0) {
+  if (recent.length > 0 && footChecksDone === 0 && complete) {
     messages.push("No foot checks recorded this week. A quick daily look for cuts, redness, or swelling is one of the simplest ways to prevent problems.");
   }
-  return { checkInsInWindow: recent.length, averageSleepHours, shortSleepNights, highStressDays, lowMoodDays, footChecksDone, messages };
+  const unreadableNotice = complete
+    ? undefined
+    : `${unreadableCount} saved ${unreadableCount === 1 ? "check-in could not be read and is" : "check-ins could not be read and are"} not shown, so this weekly review may be incomplete.`;
+  return { checkInsInWindow: recent.length, unreadableCount, unreadableNotice, averageSleepHours, shortSleepNights, highStressDays, lowMoodDays, footChecksDone, messages };
 }
 
 export function formatCheckInLabel(checkIn: WellbeingCheckIn): string {

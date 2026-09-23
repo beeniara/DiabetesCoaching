@@ -4,16 +4,16 @@ import * as ImagePicker from "expo-image-picker";
 import * as Notifications from "expo-notifications";
 import { CareTargetsSchema, DEFAULT_CARE_TARGETS, type CareTargets, type GlucoseContext } from "../../packages/shared/src/clinical";
 import { buildClinicianReviewSummary, formatClinicianReviewSummary } from "../../packages/shared/src/glucose-review";
-import { createMedicationPlan, describeMedicationPlanStatus, describeUnreadableMedicationPlans, medicationPlanNeedsReschedule, type MedicationPlan } from "../../packages/shared/src/medication-plans";
+import { createMedicationPlan, describeMedicationPlanStatus, describeUnreadableMedicationPlans, medicationPlanNeedsReschedule, type MedicationPlan, type UnreadablePlanRef } from "../../packages/shared/src/medication-plans";
 import { markConsentRevoked, type UserProfile } from "../../packages/shared/src/profile";
 import { createMockShelfAnalysis, formatShelfAnalysisSummary } from "../../packages/shared/src/shelf-analysis";
 import { addGlucoseEntry, addMedicationEntry, acceptConsent, deleteAllLocalRecords, deleteMedicationPlan, deleteShelfThread, deleteWellbeingCheckIn, getCareTargets, getOrCreateUserProfile, getWellnessGoals, listHealthEvents, listMedicationPlans, listShelfThreads, listWellbeingCheckIns, openLocalStore, replaceHealthEvents, saveCareTargets, saveHealthEvent, saveMedicationPlan, saveShelfThread, saveUserProfile, saveWellbeingCheckIn, saveWellnessGoals, type ShelfThreadRecord } from "./src/storage";
 import { clearLocalServerSettings, getLocalServerSettings, saveLocalServerSettings, type LocalServerSettingsRecord } from "./src/local-server-storage";
 import { normalizeLocalServerBaseUrl, sendShelfAnalysisToLocalServer, testLocalServerConnection } from "./src/local-server";
-import { cancelMedicationReminder, configureMedicationNotifications, getMedicationNotificationCapability, MEDICATION_ACTION_SKIPPED, MEDICATION_ACTION_SNOOZE, MEDICATION_ACTION_TAKEN, reconcileMedicationReminders, scheduleMedicationSnooze, syncMedicationReminderWithOptions } from "./src/reminders";
+import { cancelAllMedicationReminders, cancelMedicationReminder, cancelRemindersForUnreadablePlans, configureMedicationNotifications, getMedicationNotificationCapability, MEDICATION_ACTION_SKIPPED, MEDICATION_ACTION_SNOOZE, MEDICATION_ACTION_TAKEN, reconcileMedicationReminders, scheduleMedicationSnooze, syncMedicationReminderWithOptions } from "./src/reminders";
 import { formatTimelineLabel, summarizeTimeline } from "../../packages/shared/src/timeline";
 import { normalizeHealthEvent, safeGlucoseDisplay, type ExerciseCategory, type ExerciseEvent, type GlucoseCompartment, type HealthEvent, type MedicationEvent } from "../../packages/shared/src/health-events";
-import { buildEncouragement, GUIDELINE_SOURCES, pickDailyTip, REGULAR_CHECKS, SEEK_HELP_SIGNS, suggestTipsForWeek, summarizeWeeklyActivity, WellnessGoalsSchema, type WellnessGoals } from "../../packages/shared/src/coaching";
+import { buildEncouragement, createDefaultWellnessGoals, GUIDELINE_SOURCES, pickDailyTip, REGULAR_CHECKS, SEEK_HELP_SIGNS, suggestTipsForWeek, summarizeWeeklyActivity, WellnessGoalsSchema, type WellnessGoals } from "../../packages/shared/src/coaching";
 import { formatCheckInLabel, parseWellbeingCheckIn, reviewWellbeing, type MoodLevel, type StressLevel, type WellbeingCheckIn } from "../../packages/shared/src/wellbeing";
 import { BLE_GLUCOSE_MEASUREMENT_CHARACTERISTIC_UUID, BLE_GLUCOSE_SERVICE_UUID, createMockBleGattReading, createMockCloudSync, createMockImuExercise, createMockIntegrationBatch, createMockMealRecognition } from "../../packages/shared/src/mocks";
 import { synchronizeHealthEvents } from "../../packages/shared/src/synchronization";
@@ -126,7 +126,8 @@ export default function App() {
   const [events, setEvents] = useState<HealthEvent[]>([]);
   const [plans, setPlans] = useState<MedicationPlan[]>([]);
   const [unreadableEventCount, setUnreadableEventCount] = useState(0);
-  const [unreadablePlanCount, setUnreadablePlanCount] = useState(0);
+  const [unreadablePlans, setUnreadablePlans] = useState<UnreadablePlanRef[]>([]);
+  const unreadablePlanCount = unreadablePlans.length;
   const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
   const [shelfThreads, setShelfThreads] = useState<ShelfThreadRecord[]>([]);
   const [syncIssues, setSyncIssues] = useState<string[]>([]);
@@ -143,6 +144,7 @@ export default function App() {
   });
   const [inputs, setInputs] = useState<InputState>(initialInputs);
   const [checkIns, setCheckIns] = useState<WellbeingCheckIn[]>([]);
+  const [unreadableCheckInCount, setUnreadableCheckInCount] = useState(0);
   const [goals, setGoals] = useState<WellnessGoals>(() => WellnessGoalsSchema.parse({ weeklyActiveMinutes: 150, resistanceDaysPerWeek: 2, dailyCheckIn: true, updatedAt: new Date().toISOString() }));
   const [goalInputs, setGoalInputs] = useState<GoalInputs>({ weeklyActiveMinutes: "150", resistanceDaysPerWeek: "2" });
 
@@ -159,7 +161,7 @@ export default function App() {
         if (loadedProfile !== storedProfile) await saveUserProfile(db, loadedProfile);
         const loadedCareTargets = await getCareTargets(db);
         const loadedEvents = await listHealthEvents(db, 200);
-        const { plans: loadedPlans, unreadableCount: loadedUnreadablePlans } = await listMedicationPlans(db);
+        const { plans: loadedPlans, unreadablePlans: loadedUnreadablePlans } = await listMedicationPlans(db);
         const loadedShelfThreads = await listShelfThreads(db, 50);
         const loadedServerSettings = await getLocalServerSettings(db);
         const loadedCheckIns = await listWellbeingCheckIns(db, 60);
@@ -184,9 +186,10 @@ export default function App() {
         setEvents(loadedEvents.events);
         setUnreadableEventCount(loadedEvents.unreadableCount);
         setPlans(reconciledPlans.plans);
-        setUnreadablePlanCount(loadedUnreadablePlans);
+        setUnreadablePlans(loadedUnreadablePlans);
         setShelfThreads(loadedShelfThreads);
-        setCheckIns(loadedCheckIns);
+        setCheckIns(loadedCheckIns.checkIns);
+        setUnreadableCheckInCount(loadedCheckIns.unreadableCount);
         setGoals(loadedGoals);
         setGoalInputs({ weeklyActiveMinutes: String(loadedGoals.weeklyActiveMinutes), resistanceDaysPerWeek: String(loadedGoals.resistanceDaysPerWeek) });
         if (loadedServerSettings) setServerSettings(loadedServerSettings);
@@ -303,8 +306,8 @@ export default function App() {
   async function refreshMedicationPlans(promptForPermission = false) {
     if (!profile) return;
     const db = await openLocalStore();
-    const { plans: loadedPlans, unreadableCount } = await listMedicationPlans(db);
-    setUnreadablePlanCount(unreadableCount);
+    const { plans: loadedPlans, unreadablePlans: loadedUnreadablePlans } = await listMedicationPlans(db);
+    setUnreadablePlans(loadedUnreadablePlans);
     const currentCapability = await getMedicationNotificationCapability();
     const reconciledPlans = await reconcileMedicationReminders(loadedPlans, profile.timezone, currentCapability.granted, promptForPermission);
     for (const plan of reconciledPlans.plans) {
@@ -378,7 +381,7 @@ export default function App() {
 
   async function handleDeleteAllData() {
     try {
-      for (const plan of plans) await cancelMedicationReminder(plan.notificationId);
+      await cancelAllMedicationReminders();
       for (const thread of shelfThreads) deleteOwnedShelfPhoto(thread.localImageUri);
       const db = await openLocalStore();
       await deleteAllLocalRecords(db);
@@ -390,8 +393,13 @@ export default function App() {
       setEvents([]);
       setUnreadableEventCount(0);
       setPlans([]);
-      setUnreadablePlanCount(0);
+      setUnreadablePlans([]);
       setShelfThreads([]);
+      setCheckIns([]);
+      setUnreadableCheckInCount(0);
+      const defaultGoals = createDefaultWellnessGoals();
+      setGoals(defaultGoals);
+      setGoalInputs({ weeklyActiveMinutes: String(defaultGoals.weeklyActiveMinutes), resistanceDaysPerWeek: String(defaultGoals.resistanceDaysPerWeek) });
       setCareTargets(DEFAULT_CARE_TARGETS);
       setTargetInputs(toTargetInputs(DEFAULT_CARE_TARGETS));
       setServerSettings({ baseUrl: "", apiKey: "", preferredMode: "mock" });
@@ -404,6 +412,36 @@ export default function App() {
     } catch {
       setStatusMessage("Deletion could not be completed. Database records were kept, though some schedules or photos may already have been removed. Check device storage and notification settings, then retry.");
     }
+  }
+
+  function confirmRemoveUnreadablePlans() {
+    Alert.alert(
+      "Remove unreadable reminder plans?",
+      `This cancels device reminders that belong to the ${unreadablePlanCount} reminder ${unreadablePlanCount === 1 ? "plan" : "plans"} the app can no longer read, then removes ${unreadablePlanCount === 1 ? "it" : "them"} from this device. Reminders you can see in the list are not changed.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Remove unreadable plans", style: "destructive", onPress: () => void handleRemoveUnreadablePlans() }
+      ]
+    );
+  }
+
+  async function handleRemoveUnreadablePlans() {
+    const result = await cancelRemindersForUnreadablePlans(plans, unreadablePlans);
+    if (result.failed > 0) {
+      setStatusMessage(`${result.failed} device ${result.failed === 1 ? "reminder" : "reminders"} could not be cancelled. The unreadable plans were kept so you can retry, or turn off notifications for this app in device settings.`);
+      return;
+    }
+    try {
+      const db = await openLocalStore();
+      for (const plan of unreadablePlans) await deleteMedicationPlan(db, plan.id);
+      await refreshMedicationPlans();
+    } catch {
+      setStatusMessage("Their device reminders were cancelled, but the unreadable plans could not be removed from local storage. Retry, or use full local deletion.");
+      return;
+    }
+    setStatusMessage(result.verified
+      ? `Removed ${unreadablePlanCount} unreadable reminder ${unreadablePlanCount === 1 ? "plan" : "plans"} and cancelled ${result.cancelled} device ${result.cancelled === 1 ? "reminder" : "reminders"}.`
+      : `Removed ${unreadablePlanCount} unreadable reminder ${unreadablePlanCount === 1 ? "plan" : "plans"}, but the device scheduler could not be checked for snoozed reminders. If an unexpected reminder still appears, turn off notifications for this app in device settings.`);
   }
 
   async function handleAcceptConsent() {
@@ -618,7 +656,9 @@ export default function App() {
 
   async function refreshCheckIns() {
     const db = await openLocalStore();
-    setCheckIns(await listWellbeingCheckIns(db, 60));
+    const loaded = await listWellbeingCheckIns(db, 60);
+    setCheckIns(loaded.checkIns);
+    setUnreadableCheckInCount(loaded.unreadableCount);
   }
 
   async function handleSaveCheckIn() {
@@ -978,7 +1018,7 @@ export default function App() {
     [clock, events, goals, profile?.timezone]
   );
   const encouragement = useMemo(() => buildEncouragement(weeklyActivity, goals), [goals, weeklyActivity]);
-  const wellbeingReview = useMemo(() => reviewWellbeing(checkIns, new Date(clock)), [checkIns, clock]);
+  const wellbeingReview = useMemo(() => reviewWellbeing(checkIns, new Date(clock), 7, unreadableCheckInCount), [checkIns, clock, unreadableCheckInCount]);
   const dailyTip = useMemo(() => pickDailyTip(new Date(clock)), [clock]);
   const suggestedTips = useMemo(
     () => suggestTipsForWeek(weeklyActivity, {
@@ -1335,7 +1375,14 @@ export default function App() {
 
         <View style={[styles.card, activeTab !== "reminders" && styles.hidden]}>
           <Text style={styles.cardTitle}>Reminder plans</Text>
-          {describeUnreadableMedicationPlans(unreadablePlanCount) ? <Text style={styles.warningText}>{describeUnreadableMedicationPlans(unreadablePlanCount)}</Text> : null}
+          {unreadablePlanCount > 0 ? (
+            <>
+              <Text style={styles.warningText}>{describeUnreadableMedicationPlans(unreadablePlanCount)}</Text>
+              <Pressable accessibilityRole="button" style={styles.dangerButton} onPress={confirmRemoveUnreadablePlans}>
+                <Text style={styles.dangerButtonText}>Remove unreadable plans</Text>
+              </Pressable>
+            </>
+          ) : null}
           {plans.length > 0 ? plans.map((plan) => (
             <View key={plan.id} style={styles.timelineRow}>
               <Text style={styles.timelineLabel}>{plan.medicationName} at {plan.reminderHour.toString().padStart(2, "0")}:{plan.reminderMinute.toString().padStart(2, "0")}</Text>
@@ -1594,6 +1641,7 @@ export default function App() {
           <Pressable accessibilityRole="button" style={styles.primaryButton} onPress={handleSaveCheckIn}>
             <Text style={styles.primaryButtonText}>Save check-in</Text>
           </Pressable>
+          {wellbeingReview.unreadableNotice ? <Text style={styles.warningText}>{wellbeingReview.unreadableNotice}</Text> : null}
           {wellbeingReview.messages.length > 0 ? (
             <View style={styles.issueBox}>
               {wellbeingReview.messages.map((message) => <Text key={message} style={styles.issueText}>• {message}</Text>)}
