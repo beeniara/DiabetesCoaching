@@ -21,7 +21,7 @@ The app does not diagnose, calculate a dose, change medication, or manage an eme
 - Added editable, enable/disable/delete medication plans and device-local daily scheduling.
 - Added Taken, Skipped, and Snooze 10 min notification actions with idempotent medication events.
 - Added notification permission/capability reporting, native identifier reconciliation, timezone refresh, and explicit resync.
-- Added consent-revocation cancellation and Android exact-alarm permission declaration.
+- Added consent-revocation cancellation and Android exact-alarm permission declaration. Revocation cancels every scheduled reminder, including pending snoozes and reminders from unreadable plans.
 - Moved reminder reconciliation decisions (keep, disable, await permission, reschedule with reason) and notification capability reporting into `packages/shared/src/medication-plans.ts` with unit tests; `apps/mobile/src/reminders.ts` now only performs the native calls.
 - Failed, stale, and permission-blocked reminders show distinct status text, and a denied or blocked notification permission is shown as a warning with the recovery step.
 

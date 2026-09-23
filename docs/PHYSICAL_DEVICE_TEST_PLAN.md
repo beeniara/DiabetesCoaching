@@ -5,8 +5,8 @@ Record the app build, device model, OS version, locale, timezone, tester, date, 
 ## 1. Install, consent, and local data
 
 - Fresh install shows no invented glucose value or personal history.
-- Logging, reminder creation, and photo intake are blocked before consent.
-- Accepting consent survives a normal restart; revoking it blocks new collection and disables/cancels reminder plans.
+- Logging, reminder creation, photo intake, and saving the display name or care targets are blocked before consent.
+- Accepting consent survives a normal restart; revoking it blocks new collection and disables/cancels reminder plans. Snooze a reminder, revoke within 10 minutes, and confirm the snooze never fires; repeat with an unreadable plan (section 2a) and confirm its daily reminder stops.
 - Create one event of every type, edit targets, create a reminder, queue a photo, then confirm **Delete all local data** removes the profile, events, target overrides, plans, scheduled notifications (including pending snoozes and reminders from unreadable plans), wellbeing check-ins and goals from both storage and the screen, shelf records/photos, and secure server token.
 - Force-close the app during deletion where test tooling permits, relaunch, and verify any remaining state is reported and can be deleted safely.
 - Verify airplane-mode startup, logging, timeline, reminders, and export work without the server.

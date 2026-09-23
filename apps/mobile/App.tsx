@@ -483,6 +483,12 @@ export default function App() {
       await saveMedicationPlan(db, disabled);
       disabledPlans.push(disabled);
     }
+    try {
+      // Also clears pending snoozes and reminders from plans that can no longer be read.
+      await cancelAllMedicationReminders();
+    } catch {
+      cancellationFailed = true;
+    }
     await saveUserProfile(db, nextProfile);
     setProfile(nextProfile);
     setPlans(disabledPlans);
@@ -492,7 +498,7 @@ export default function App() {
   }
 
   async function handleSaveProfile() {
-    if (!profile) return;
+    if (!profile || !requireConsent()) return;
     const nextProfile = {
       ...profile,
       displayName: displayName.trim() || undefined,
@@ -505,6 +511,7 @@ export default function App() {
   }
 
   async function handleSaveTargets() {
+    if (!requireConsent()) return;
     const parsed = CareTargetsSchema.safeParse({
       fastingMinMmolL: Number.parseFloat(targetInputs.fastingMin),
       fastingMaxMmolL: Number.parseFloat(targetInputs.fastingMax),
