@@ -25,13 +25,22 @@ export function normalizeLocalServerBaseUrl(value: string) {
   return url.origin;
 }
 
-async function requestLocalServer(url: string, init: RequestInit) {
+// The timeout covers reading the body too, so a server that stalls after sending headers cannot hang the request.
+async function requestLocalServer(url: string, init: RequestInit): Promise<{ ok: boolean; status: number; body: unknown }> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 35000);
   try {
-    return await fetch(url, { ...init, signal: controller.signal });
+    const response = await fetch(url, { ...init, signal: controller.signal });
+    const text = await response.text();
+    let body: unknown;
+    try {
+      body = text ? JSON.parse(text) : undefined;
+    } catch {
+      body = undefined;
+    }
+    return { ok: response.ok, status: response.status, body };
   } catch (error) {
-    if (error instanceof Error && error.name === "AbortError") throw new Error("Local server request timed out.");
+    if (error instanceof Error && error.name === "AbortError") throw new Error("Local server request timed out. The local item was kept for retry.");
     throw new Error("Local server is unavailable. The local item was kept for retry.");
   } finally {
     clearTimeout(timeout);
@@ -62,19 +71,13 @@ export async function sendShelfAnalysisToLocalServer(
   });
 
   if (!response.ok) {
-    let message = `Local server returned ${response.status}.`;
-    try {
-      const body = await response.json() as { message?: unknown };
-      if (typeof body.message === "string") message = body.message.slice(0, 180);
-    } catch {
-      // Do not surface unvalidated response bodies.
-    }
-    throw new Error(message);
+    const serverMessage = typeof response.body === "object" && response.body !== null && "message" in response.body ? response.body.message : undefined;
+    throw new Error(typeof serverMessage === "string" ? serverMessage.slice(0, 180) : `Local server returned ${response.status}.`);
   }
 
-  const json = (await response.json()) as unknown;
-  const analysis = ShelfAnalysisSchema.parse(json);
-  return { analysis, endpoint: path, mode };
+  const parsed = ShelfAnalysisSchema.safeParse(response.body);
+  if (!parsed.success) throw new Error("The local server response did not match the expected shelf-analysis format. The local item was kept for retry.");
+  return { analysis: parsed.data, endpoint: path, mode };
 }
 
 export async function testLocalServerConnection(settings: LocalServerSettings) {
