@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { createMockShelfAnalysis } from "../../../packages/shared/src/shelf-analysis.js";
 import { handleShelfMock, handleShelfValidate } from "../src/shelf.js";
 
 function createResponse() {
   return {
+    locals: { requestId: "req-test" } as Record<string, unknown>,
     statusCode: 200,
     payload: undefined as unknown,
     status(code: number) {
@@ -19,7 +20,7 @@ function createResponse() {
 }
 
 test("returns a valid mock shelf analysis", async () => {
-  const req = { body: { caption: "snack shelf photo", photoUri: "file:///photo.jpg" }, path: "/v1/shelf-analysis/mock", method: "POST", header: () => "req-1" } as any;
+  const req = { body: { caption: "snack shelf photo" }, path: "/v1/shelf-analysis/mock", method: "POST", header: () => "req-1" } as any;
   const res = createResponse();
   await handleShelfMock(req, res as any);
   assert.equal(res.statusCode, 200);

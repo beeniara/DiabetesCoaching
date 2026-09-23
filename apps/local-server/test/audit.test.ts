@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { formatAuditEventLine, redactAuditDetail } from "../src/audit.js";
 
 test("redacts bearer tokens from audit details", () => {

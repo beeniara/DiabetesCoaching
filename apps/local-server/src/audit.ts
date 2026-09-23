@@ -19,14 +19,17 @@ export function redactAuditDetail(detail: string) {
     .replaceAll(/[\w.+-]+@[\w.-]+\.[a-z]{2,}/gi, "[email redacted]");
 }
 
-export async function writeAuditEvent(event: AuditEvent) {
-  const line = JSON.stringify({
+export function formatAuditEventLine(event: AuditEvent) {
+  return JSON.stringify({
     ...event,
     detail: redactAuditDetail(event.detail)
   });
+}
+
+export async function writeAuditEvent(event: AuditEvent) {
   const path = process.env.LOCAL_SERVER_AUDIT_LOG;
   if (!path) return;
-  await appendFile(path, `${line}\n`, { encoding: "utf8" });
+  await appendFile(path, `${formatAuditEventLine(event)}\n`, { encoding: "utf8" });
 }
 
 export function recordAuditEvent(event: AuditEvent) {

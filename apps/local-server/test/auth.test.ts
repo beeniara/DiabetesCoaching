@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { requireLocalServerAuth } from "../src/auth.js";
 
 function createResponse() {
   return {
     headers: {} as Record<string, string>,
+    locals: { requestId: "req-test" } as Record<string, unknown>,
     statusCode: 200,
     payload: undefined as unknown,
     setHeader(name: string, value: string) {
@@ -23,7 +24,7 @@ function createResponse() {
 
 test("blocks requests when auth is missing", () => {
   const previous = process.env.LOCAL_SERVER_API_KEY;
-  process.env.LOCAL_SERVER_API_KEY = "secret";
+  process.env.LOCAL_SERVER_API_KEY = "a-test-token-of-24-chars-plus";
   const req = {
     path: "/v1/shelf-analysis/mock",
     method: "POST",
@@ -44,12 +45,12 @@ test("blocks requests when auth is missing", () => {
 
 test("allows requests with a matching bearer token", () => {
   const previous = process.env.LOCAL_SERVER_API_KEY;
-  process.env.LOCAL_SERVER_API_KEY = "secret";
+  process.env.LOCAL_SERVER_API_KEY = "a-test-token-of-24-chars-plus";
   const req = {
     path: "/v1/shelf-analysis/mock",
     method: "POST",
     header: (name: string) => {
-      if (name === "authorization") return "Bearer secret";
+      if (name === "authorization") return "Bearer a-test-token-of-24-chars-plus";
       if (name === "x-request-id") return "req-2";
       return undefined;
     }
