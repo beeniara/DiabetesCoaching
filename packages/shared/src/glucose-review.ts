@@ -32,7 +32,6 @@ export type ClinicianReviewSummary = {
 export function deriveGlucoseTrend(events: HealthEvent[], targetContext: GlucoseContext, targets: CareTargets): GlucoseTrendSummary {
   const glucoseEvents = sortHealthTimeline(events).filter((event): event is GlucoseEvent => event.type === "glucose");
   const latest = glucoseEvents[0];
-  const previous = glucoseEvents[1];
 
   if (!latest) {
     return {
@@ -42,12 +41,13 @@ export function deriveGlucoseTrend(events: HealthEvent[], targetContext: Glucose
     };
   }
 
+  const previous = glucoseEvents.slice(1).find((event) => event.compartment === latest.compartment);
   const targetReview = describeGlucose(latest.valueMmolL, targetContext, targets);
 
   if (!previous) {
     return {
       direction: "limited",
-      message: `Latest glucose is ${latest.valueMmolL.toFixed(1)} mmol/L. Trend is limited because there is only one reading.`,
+      message: `Latest glucose is ${latest.valueMmolL.toFixed(1)} mmol/L. Trend is limited because there is only one reading in this compartment.`,
       safetyNote: targetReview.safetyNote
     };
   }

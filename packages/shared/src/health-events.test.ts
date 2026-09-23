@@ -56,4 +56,35 @@ describe("health events", () => {
     expect(result.events[0].quality).toBe("conflicting");
     expect(result.issues.map((issue) => issue.code)).toEqual(["duplicate", "conflict"]);
   });
+
+  it("keeps a stored conflicting reading labeled conflicting after it is reloaded and renormalized", () => {
+    const second = { ...base, id: "g-2", occurredAt: "2026-08-08T08:01:00+12:00", receivedAt: "2026-08-08T08:02:00+12:00", valueMmolL: 14.1 };
+    const merged = mergeHealthEvents([base, second]);
+    expect(merged.events.every((event) => event.quality === "conflicting")).toBe(true);
+
+    // Simulate a reload from storage: each stored event is parsed and normalized on its own,
+    // with no access to the sibling reading that originally produced the conflict.
+    const reloaded = merged.events.map((event) => normalizeHealthEvent(event).event);
+    expect(reloaded.every((event) => event?.quality === "conflicting")).toBe(true);
+  });
+
+  it("detects a conflict between glucose readings separated by another event type", () => {
+    const meal = {
+      id: "meal-between", userId: "u-1", type: "meal" as const, source: "manual" as const,
+      occurredAt: "2026-08-08T08:00:30+12:00", receivedAt: "2026-08-08T08:00:30+12:00",
+      timezone: "Pacific/Auckland", confidence: 1, quality: "valid" as const, description: "Lunch"
+    };
+    const second = { ...base, id: "g-2", occurredAt: "2026-08-08T08:01:00+12:00", receivedAt: "2026-08-08T08:02:00+12:00", valueMmolL: 14.1 };
+    const result = mergeHealthEvents([base, meal, second]);
+    expect(result.issues.map((issue) => issue.code)).toContain("conflict");
+    const glucoseEvents = result.events.filter((event) => event.type === "glucose");
+    expect(glucoseEvents.every((event) => event.quality === "conflicting")).toBe(true);
+  });
+
+  it("does not conflict glucose readings from different compartments even when close together", () => {
+    const capillary = { ...base, id: "g-cap", compartment: "capillary-blood" as const, occurredAt: "2026-08-08T08:00:30+12:00", receivedAt: "2026-08-08T08:00:30+12:00", valueMmolL: 14.1 };
+    const result = mergeHealthEvents([base, capillary]);
+    expect(result.issues.map((issue) => issue.code)).not.toContain("conflict");
+    expect(result.events.every((event) => event.quality !== "conflicting")).toBe(true);
+  });
 });

@@ -139,6 +139,7 @@ export function normalizeHealthEvent(input: unknown, now = new Date()): { event?
 }
 
 export function classifyEventQuality(event: HealthEvent, issues: ValidationIssue[]): DataQuality {
+  if (event.quality === "conflicting") return "conflicting";
   if (issues.some((issue) => issue.code === "conflict")) return "conflicting";
   if (issues.some((issue) => issue.code === "invalid")) return "suspect";
   if (issues.some((issue) => issue.code === "delayed")) return "delayed";
@@ -153,6 +154,7 @@ export function mergeHealthEvents(events: HealthEvent[]): { events: HealthEvent[
   let lastSeenOccurredAt = Number.NEGATIVE_INFINITY;
   const byTimestamp = [...events].sort((a, b) => Date.parse(a.occurredAt) - Date.parse(b.occurredAt));
   const merged: HealthEvent[] = [];
+  const lastGlucoseIndexByCompartment = new Map<GlucoseCompartment, number>();
   for (const event of events) {
     const occurredAt = Date.parse(event.occurredAt);
     if (occurredAt < lastSeenOccurredAt) {
@@ -176,11 +178,18 @@ export function mergeHealthEvents(events: HealthEvent[]): { events: HealthEvent[
       continue;
     }
     seen.set(event.id, merged.length);
-    const previous = merged.at(-1);
-    if (previous?.type === "glucose" && event.type === "glucose" && previous.compartment === event.compartment && Math.abs(Date.parse(previous.occurredAt) - Date.parse(event.occurredAt)) < 120000 && Math.abs(previous.valueMmolL - event.valueMmolL) > 3) {
-      issues.push({ code: "conflict", message: "Nearby glucose readings conflict materially; review before relying on the trend.", eventId: event.id });
-      merged[merged.length - 1] = { ...previous, quality: "conflicting" };
-      merged.push({ ...event, quality: "conflicting" });
+    if (event.type === "glucose") {
+      const previousIndex = lastGlucoseIndexByCompartment.get(event.compartment);
+      const previous = previousIndex !== undefined ? (merged[previousIndex] as GlucoseEvent) : undefined;
+      if (previous && Math.abs(Date.parse(previous.occurredAt) - Date.parse(event.occurredAt)) < 120000 && Math.abs(previous.valueMmolL - event.valueMmolL) > 3) {
+        issues.push({ code: "conflict", message: "Nearby glucose readings conflict materially; review before relying on the trend.", eventId: event.id });
+        merged[previousIndex as number] = { ...previous, quality: "conflicting" };
+        merged.push({ ...event, quality: "conflicting" });
+        lastGlucoseIndexByCompartment.set(event.compartment, merged.length - 1);
+        continue;
+      }
+      merged.push(event);
+      lastGlucoseIndexByCompartment.set(event.compartment, merged.length - 1);
       continue;
     }
     merged.push(event);
