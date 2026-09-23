@@ -138,6 +138,24 @@ export function normalizeHealthEvent(input: unknown, now = new Date()): { event?
   };
 }
 
+export function parseStoredHealthEvents(payloads: string[], now = new Date()): { events: HealthEvent[]; unreadableCount: number } {
+  const events: HealthEvent[] = [];
+  let unreadableCount = 0;
+  for (const payload of payloads) {
+    let candidate: unknown;
+    try {
+      candidate = JSON.parse(payload);
+    } catch {
+      unreadableCount += 1;
+      continue;
+    }
+    const parsed = normalizeHealthEvent(candidate, now);
+    if (parsed.event) events.push(parsed.event);
+    else unreadableCount += 1;
+  }
+  return { events, unreadableCount };
+}
+
 export function classifyEventQuality(event: HealthEvent, issues: ValidationIssue[]): DataQuality {
   if (event.quality === "conflicting") return "conflicting";
   if (issues.some((issue) => issue.code === "conflict")) return "conflicting";

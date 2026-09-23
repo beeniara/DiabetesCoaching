@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classifyEventQuality, mergeHealthEvents, normalizeHealthEvent, parseHealthEvent, safeGlucoseDisplay, type GlucoseEvent } from "./health-events";
+import { classifyEventQuality, mergeHealthEvents, normalizeHealthEvent, parseHealthEvent, parseStoredHealthEvents, safeGlucoseDisplay, type GlucoseEvent } from "./health-events";
 
 const base = {
   id: "g-1", userId: "u-1", type: "glucose" as const, source: "cloud-cgm" as const,
@@ -86,5 +86,17 @@ describe("health events", () => {
     const result = mergeHealthEvents([base, capillary]);
     expect(result.issues.map((issue) => issue.code)).not.toContain("conflict");
     expect(result.events.every((event) => event.quality !== "conflicting")).toBe(true);
+  });
+
+  it("counts stored rows that are corrupt or no longer match the schema instead of dropping them silently", () => {
+    const stored = [
+      JSON.stringify({ ...base, quality: "conflicting" }),
+      "{not json",
+      JSON.stringify({ ...base, id: "g-bad", valueMmolL: -4 })
+    ];
+    const result = parseStoredHealthEvents(stored, new Date("2026-08-08T12:00:00+12:00"));
+    expect(result.events.map((event) => event.id)).toEqual(["g-1"]);
+    expect(result.events[0].quality).toBe("conflicting");
+    expect(result.unreadableCount).toBe(2);
   });
 });

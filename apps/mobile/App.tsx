@@ -4,7 +4,7 @@ import * as ImagePicker from "expo-image-picker";
 import * as Notifications from "expo-notifications";
 import { CareTargetsSchema, DEFAULT_CARE_TARGETS, type CareTargets, type GlucoseContext } from "../../packages/shared/src/clinical";
 import { buildClinicianReviewSummary, formatClinicianReviewSummary } from "../../packages/shared/src/glucose-review";
-import { createMedicationPlan, describeMedicationPlanStatus, medicationPlanNeedsReschedule, type MedicationPlan } from "../../packages/shared/src/medication-plans";
+import { createMedicationPlan, describeMedicationPlanStatus, describeUnreadableMedicationPlans, medicationPlanNeedsReschedule, type MedicationPlan } from "../../packages/shared/src/medication-plans";
 import { markConsentRevoked, type UserProfile } from "../../packages/shared/src/profile";
 import { createMockShelfAnalysis, formatShelfAnalysisSummary } from "../../packages/shared/src/shelf-analysis";
 import { addGlucoseEntry, addMedicationEntry, acceptConsent, deleteAllLocalRecords, deleteMedicationPlan, deleteShelfThread, deleteWellbeingCheckIn, getCareTargets, getOrCreateUserProfile, getWellnessGoals, listHealthEvents, listMedicationPlans, listShelfThreads, listWellbeingCheckIns, openLocalStore, replaceHealthEvents, saveCareTargets, saveHealthEvent, saveMedicationPlan, saveShelfThread, saveUserProfile, saveWellbeingCheckIn, saveWellnessGoals, type ShelfThreadRecord } from "./src/storage";
@@ -125,6 +125,8 @@ export default function App() {
   const [displayName, setDisplayName] = useState("");
   const [events, setEvents] = useState<HealthEvent[]>([]);
   const [plans, setPlans] = useState<MedicationPlan[]>([]);
+  const [unreadableEventCount, setUnreadableEventCount] = useState(0);
+  const [unreadablePlanCount, setUnreadablePlanCount] = useState(0);
   const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
   const [shelfThreads, setShelfThreads] = useState<ShelfThreadRecord[]>([]);
   const [syncIssues, setSyncIssues] = useState<string[]>([]);
@@ -157,7 +159,7 @@ export default function App() {
         if (loadedProfile !== storedProfile) await saveUserProfile(db, loadedProfile);
         const loadedCareTargets = await getCareTargets(db);
         const loadedEvents = await listHealthEvents(db, 200);
-        const loadedPlans = await listMedicationPlans(db);
+        const { plans: loadedPlans, unreadableCount: loadedUnreadablePlans } = await listMedicationPlans(db);
         const loadedShelfThreads = await listShelfThreads(db, 50);
         const loadedServerSettings = await getLocalServerSettings(db);
         const loadedCheckIns = await listWellbeingCheckIns(db, 60);
@@ -179,8 +181,10 @@ export default function App() {
         setDisplayName(loadedProfile.displayName ?? "");
         setCareTargets(loadedCareTargets);
         setTargetInputs(toTargetInputs(loadedCareTargets));
-        setEvents(loadedEvents);
+        setEvents(loadedEvents.events);
+        setUnreadableEventCount(loadedEvents.unreadableCount);
         setPlans(reconciledPlans.plans);
+        setUnreadablePlanCount(loadedUnreadablePlans);
         setShelfThreads(loadedShelfThreads);
         setCheckIns(loadedCheckIns);
         setGoals(loadedGoals);
@@ -220,7 +224,7 @@ export default function App() {
     return () => subscription.remove();
   }, [profile?.consentState, profile?.id, profile?.timezone]);
 
-  const dbState = useMemo(() => summarizeTimeline(events, new Date(clock)), [clock, events]);
+  const dbState = useMemo(() => summarizeTimeline(events, new Date(clock), unreadableEventCount), [clock, events, unreadableEventCount]);
   const consentAccepted = profile?.consentState === "accepted";
 
   function requireConsent() {
@@ -291,13 +295,16 @@ export default function App() {
 
   async function refreshTimeline() {
     const db = await openLocalStore();
-    setEvents(await listHealthEvents(db, 200));
+    const loaded = await listHealthEvents(db, 200);
+    setEvents(loaded.events);
+    setUnreadableEventCount(loaded.unreadableCount);
   }
 
   async function refreshMedicationPlans(promptForPermission = false) {
     if (!profile) return;
     const db = await openLocalStore();
-    const loadedPlans = await listMedicationPlans(db);
+    const { plans: loadedPlans, unreadableCount } = await listMedicationPlans(db);
+    setUnreadablePlanCount(unreadableCount);
     const currentCapability = await getMedicationNotificationCapability();
     const reconciledPlans = await reconcileMedicationReminders(loadedPlans, profile.timezone, currentCapability.granted, promptForPermission);
     for (const plan of reconciledPlans.plans) {
@@ -381,7 +388,9 @@ export default function App() {
       setProfile(freshProfile);
       setDisplayName("");
       setEvents([]);
+      setUnreadableEventCount(0);
       setPlans([]);
+      setUnreadablePlanCount(0);
       setShelfThreads([]);
       setCareTargets(DEFAULT_CARE_TARGETS);
       setTargetInputs(toTargetInputs(DEFAULT_CARE_TARGETS));
@@ -982,8 +991,8 @@ export default function App() {
   );
   const latestGlucoseCard = timeline.latestGlucose ? safeGlucoseDisplay(timeline.latestGlucose) : undefined;
   const clinicianReview = useMemo(
-    () => buildClinicianReviewSummary(timeline.events, reviewContext, careTargets),
-    [careTargets, reviewContext, timeline.events]
+    () => buildClinicianReviewSummary(timeline.events, reviewContext, careTargets, timeline.unreadableCount),
+    [careTargets, reviewContext, timeline.events, timeline.unreadableCount]
   );
   const consentBanner = profile?.consentState === "accepted"
     ? "Consent is active for local tracking."
@@ -1148,6 +1157,7 @@ export default function App() {
           <Text style={styles.cardTitle}>Glucose freshness</Text>
           <Text style={styles.metric}>{latestGlucoseCard?.label ?? "No glucose recorded"}</Text>
           <Text style={styles.bodyText}>{timeline.warning}</Text>
+          {timeline.unreadableNotice ? <Text style={styles.warningText}>{timeline.unreadableNotice}</Text> : null}
           <Text style={styles.muted}>Timeline freshness: {timeline.freshness}</Text>
           <Text style={styles.muted}>Capillary reading: {timeline.latestGlucose?.compartment === "capillary-blood" ? "yes" : "no"}</Text>
           <Text style={styles.muted}>Cloud and physiological delay are labeled separately.</Text>
@@ -1325,6 +1335,7 @@ export default function App() {
 
         <View style={[styles.card, activeTab !== "reminders" && styles.hidden]}>
           <Text style={styles.cardTitle}>Reminder plans</Text>
+          {describeUnreadableMedicationPlans(unreadablePlanCount) ? <Text style={styles.warningText}>{describeUnreadableMedicationPlans(unreadablePlanCount)}</Text> : null}
           {plans.length > 0 ? plans.map((plan) => (
             <View key={plan.id} style={styles.timelineRow}>
               <Text style={styles.timelineLabel}>{plan.medicationName} at {plan.reminderHour.toString().padStart(2, "0")}:{plan.reminderMinute.toString().padStart(2, "0")}</Text>
@@ -1342,7 +1353,7 @@ export default function App() {
                 </Pressable>
               </View>
             </View>
-          )) : <Text style={styles.muted}>No reminder plans saved yet.</Text>}
+          )) : unreadablePlanCount === 0 ? <Text style={styles.muted}>No reminder plans saved yet.</Text> : null}
         </View>
 
         <View style={[styles.card, activeTab !== "timeline" && styles.hidden]}>

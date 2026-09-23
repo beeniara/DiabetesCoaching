@@ -1,10 +1,9 @@
 import * as SQLite from "expo-sqlite";
-import { HealthEventSchema, normalizeHealthEvent, type HealthEvent, type GlucoseEvent, type MedicationEvent } from "../../../packages/shared/src/health-events";
+import { HealthEventSchema, parseStoredHealthEvents, type HealthEvent, type GlucoseEvent, type MedicationEvent } from "../../../packages/shared/src/health-events";
 import { CareTargetsSchema, DEFAULT_CARE_TARGETS, type CareTargets } from "../../../packages/shared/src/clinical";
 import { ShelfAnalysisSchema, type ShelfAnalysis } from "../../../packages/shared/src/shelf-analysis";
 import { createDefaultUserProfile, markConsentAccepted, UserProfileSchema, type UserProfile } from "../../../packages/shared/src/profile";
 import { MedicationPlanSchema, type MedicationPlan } from "../../../packages/shared/src/medication-plans";
-import { summarizeTimeline } from "../../../packages/shared/src/timeline";
 import { WellbeingCheckInSchema, type WellbeingCheckIn } from "../../../packages/shared/src/wellbeing";
 import { createDefaultWellnessGoals, WellnessGoalsSchema, type WellnessGoals } from "../../../packages/shared/src/coaching";
 
@@ -240,20 +239,11 @@ export async function replaceHealthEvents(db: SQLite.SQLiteDatabase, events: Hea
   });
 }
 
-export async function listHealthEvents(db: SQLite.SQLiteDatabase, limit = 100): Promise<HealthEvent[]> {
+export async function listHealthEvents(db: SQLite.SQLiteDatabase, limit = 100): Promise<{ events: HealthEvent[]; unreadableCount: number }> {
   const rows = await db.getAllAsync<{ payload_json: string }>(
     "SELECT payload_json FROM health_events ORDER BY occurred_at DESC LIMIT ?", limit
   );
-  const events: HealthEvent[] = [];
-  for (const row of rows) {
-    try {
-      const parsed = normalizeHealthEvent(JSON.parse(row.payload_json));
-      if (parsed.event) events.push(parsed.event);
-    } catch {
-      // Corrupt external or legacy data is omitted instead of reaching the UI.
-    }
-  }
-  return events;
+  return parseStoredHealthEvents(rows.map((row) => row.payload_json));
 }
 
 export async function addGlucoseEntry(db: SQLite.SQLiteDatabase, event: GlucoseEvent) {
@@ -264,12 +254,7 @@ export async function addMedicationEntry(db: SQLite.SQLiteDatabase, event: Medic
   await saveHealthEvent(db, event);
 }
 
-export async function getTimelineSummary(db: SQLite.SQLiteDatabase) {
-  const events = await listHealthEvents(db, 100);
-  return summarizeTimeline(events);
-}
-
-export async function listMedicationPlans(db: SQLite.SQLiteDatabase): Promise<MedicationPlan[]> {
+export async function listMedicationPlans(db: SQLite.SQLiteDatabase): Promise<{ plans: MedicationPlan[]; unreadableCount: number }> {
   const rows = await db.getAllAsync<{
     id: string;
     user_id: string;
@@ -287,7 +272,7 @@ export async function listMedicationPlans(db: SQLite.SQLiteDatabase): Promise<Me
      FROM medication_plans
      ORDER BY reminder_hour ASC, reminder_minute ASC, medication_name ASC`
   );
-  return rows.flatMap((row) => {
+  const plans = rows.flatMap((row) => {
     const parsed = MedicationPlanSchema.safeParse({
       id: row.id,
       userId: row.user_id,
@@ -303,6 +288,7 @@ export async function listMedicationPlans(db: SQLite.SQLiteDatabase): Promise<Me
     });
     return parsed.success ? [parsed.data] : [];
   });
+  return { plans, unreadableCount: rows.length - plans.length };
 }
 
 export async function getCareTargets(db: SQLite.SQLiteDatabase): Promise<CareTargets> {

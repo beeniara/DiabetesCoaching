@@ -33,4 +33,12 @@ describe("glucose review", () => {
     expect(trend.direction).toBe("limited");
     expect(trend.message).toContain("only one reading in this compartment");
   });
+
+  it("tells the clinician when saved records were left out of the summary", () => {
+    const complete = buildClinicianReviewSummary([mockDelayedCloudCgm()], "fasting", DEFAULT_CARE_TARGETS);
+    expect(complete.notes.join(" ")).not.toContain("could not be read");
+
+    const incomplete = buildClinicianReviewSummary([mockDelayedCloudCgm()], "fasting", DEFAULT_CARE_TARGETS, 3);
+    expect(formatClinicianReviewSummary(incomplete)).toContain("3 saved records could not be read and are not included");
+  });
 });

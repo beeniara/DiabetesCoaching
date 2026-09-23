@@ -33,6 +33,7 @@ Delivery punctuality, reboot handling, idle modes, and exact-alarm settings rema
 - Added interstitial-fluid lag warnings during rapid flux and limited/stale status for old or unreliable data.
 - Added BLE GATT glucose, one-to-three-hour cloud delay/rate-limit, meal-recognition, and IMU exercise simulations.
 - Routed single and batch simulations through the same atomic synchronization path.
+- Stored health events and reminder plans that can no longer be read are counted instead of silently dropped. The dashboard, reminder list, and clinician summary say the data may be incomplete, and the timeline is never reported as `current` while records are unreadable.
 - A stored `conflicting` glucose label now survives reload and re-normalization, nearby-reading conflicts are detected per glucose compartment even when other events are logged in between, and the clinician trend compares readings from the same compartment only.
 
 The supplied integrations are safe mocks. Real BLE packet decoding, vendor authentication, and production cloud adapters remain separate future work.

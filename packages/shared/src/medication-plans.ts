@@ -54,6 +54,11 @@ export function describeMedicationPlanStatus(plan: MedicationPlan, deviceTimezon
   return "Reminder is scheduled for the current device timezone.";
 }
 
+export function describeUnreadableMedicationPlans(count: number): string | undefined {
+  if (count <= 0) return undefined;
+  return `${count} saved reminder ${count === 1 ? "plan could not be read and is" : "plans could not be read and are"} not listed. A device reminder created earlier may still appear, so do not treat this list as complete.`;
+}
+
 export type ReminderSyncAction =
   | { kind: "keep" }
   | { kind: "disable" }

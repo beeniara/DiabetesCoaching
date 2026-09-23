@@ -3,6 +3,7 @@ import {
   createMedicationPlan,
   describeMedicationPlanStatus,
   describeNotificationCapability,
+  describeUnreadableMedicationPlans,
   medicationPlanNeedsReschedule,
   planMedicationReminderSync,
   type MedicationPlan
@@ -32,6 +33,12 @@ describe("medication plans", () => {
     expect(describeMedicationPlanStatus(plan, "Pacific/Auckland", false)).toContain("notifications are not allowed");
     expect(describeMedicationPlanStatus(scheduled, "Pacific/Auckland", true)).toContain("is scheduled");
     expect(describeMedicationPlanStatus({ ...scheduled, enabled: false }, "Pacific/Auckland", false)).toBe("Reminder disabled.");
+  });
+
+  it("warns that the plan list is incomplete when saved plans cannot be read", () => {
+    expect(describeUnreadableMedicationPlans(0)).toBeUndefined();
+    expect(describeUnreadableMedicationPlans(1)).toContain("1 saved reminder plan could not be read");
+    expect(describeUnreadableMedicationPlans(2)).toContain("may still appear");
   });
 });
 

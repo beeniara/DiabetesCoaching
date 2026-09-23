@@ -9,6 +9,8 @@ export type TimelineSummary = {
   latestEvent?: HealthEvent;
   latestGlucose?: Extract<HealthEvent, { type: "glucose" }>;
   counts: Record<HealthEvent["type"], number>;
+  unreadableCount: number;
+  unreadableNotice?: string;
 };
 
 export function sortHealthTimeline(events: HealthEvent[]): HealthEvent[] {
@@ -19,7 +21,7 @@ export function sortHealthTimeline(events: HealthEvent[]): HealthEvent[] {
   });
 }
 
-export function summarizeTimeline(events: HealthEvent[], now = new Date()): TimelineSummary {
+export function summarizeTimeline(events: HealthEvent[], now = new Date(), unreadableCount = 0): TimelineSummary {
   const ordered = sortHealthTimeline(events);
   const counts: Record<HealthEvent["type"], number> = {
     glucose: 0,
@@ -38,7 +40,7 @@ export function summarizeTimeline(events: HealthEvent[], now = new Date()): Time
     ? "delayed"
     : glucoseAgeMinutes !== undefined && glucoseAgeMinutes > 180
       ? "stale"
-      : latestEvent
+      : latestEvent && unreadableCount === 0
         ? "current"
         : "limited";
   const warning = latestGlucose
@@ -55,7 +57,11 @@ export function summarizeTimeline(events: HealthEvent[], now = new Date()): Time
           : "Latest glucose is current for the app's timeline."
     : "No glucose data has been logged yet.";
 
-  return { events: ordered, freshness, warning, latestEvent, latestGlucose, counts };
+  const unreadableNotice = unreadableCount > 0
+    ? `${unreadableCount} saved ${unreadableCount === 1 ? "record could not be read and is" : "records could not be read and are"} not shown, so this timeline and the latest reading may be incomplete.`
+    : undefined;
+
+  return { events: ordered, freshness, warning, latestEvent, latestGlucose, counts, unreadableCount, unreadableNotice };
 }
 
 export function formatTimelineLabel(event: HealthEvent): string {

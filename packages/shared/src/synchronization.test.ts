@@ -33,4 +33,12 @@ describe("health event synchronization", () => {
     expect(result.events).toEqual([ble]);
     expect(result.rejectedIncoming).toBe(1);
   });
+
+  it("reports existing records that fail validation instead of dropping them silently", () => {
+    const ble = createMockBleGattReading({ now }).event;
+    const result = synchronizeHealthEvents([ble, { ...ble, id: "corrupt", valueMmolL: -1 } as typeof ble], [], now);
+    expect(result.events).toEqual([ble]);
+    const invalid = result.issues.find((issue) => issue.code === "invalid");
+    expect(invalid?.message).toContain("1 existing record failed validation");
+  });
 });

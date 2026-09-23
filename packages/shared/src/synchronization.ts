@@ -28,6 +28,10 @@ export function synchronizeHealthEvents(
     const parsed = HealthEventSchema.safeParse(event);
     return parsed.success ? [parsed.data] : [];
   }).sort((a, b) => Date.parse(a.occurredAt) - Date.parse(b.occurredAt));
+  const invalidExisting = existing.length - validatedExisting.length;
+  if (invalidExisting > 0) {
+    issues.push({ code: "invalid", message: `${invalidExisting} existing ${invalidExisting === 1 ? "record" : "records"} failed validation and ${invalidExisting === 1 ? "was" : "were"} left unchanged in local storage.` });
+  }
   const existingIds = new Set(validatedExisting.map((event) => event.id));
   const merged = mergeHealthEvents([...validatedExisting, ...normalizedIncoming]);
   issues.push(...merged.issues);

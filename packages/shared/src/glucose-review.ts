@@ -80,7 +80,8 @@ export function deriveGlucoseTrend(events: HealthEvent[], targetContext: Glucose
 export function buildClinicianReviewSummary(
   events: HealthEvent[],
   targetContext: GlucoseContext,
-  targets: CareTargets
+  targets: CareTargets,
+  unreadableCount = 0
 ): ClinicianReviewSummary {
   const ordered = sortHealthTimeline(events);
   const glucoseTrend = deriveGlucoseTrend(ordered, targetContext, targets);
@@ -100,7 +101,8 @@ export function buildClinicianReviewSummary(
     targetReview,
     notes: [
       "This summary is for discussion and pattern review only.",
-      "It does not diagnose, calculate doses, change medication, or replace urgent care."
+      "It does not diagnose, calculate doses, change medication, or replace urgent care.",
+      ...(unreadableCount > 0 ? [`${unreadableCount} saved ${unreadableCount === 1 ? "record" : "records"} could not be read and ${unreadableCount === 1 ? "is" : "are"} not included, so this summary may be incomplete.`] : [])
     ]
   };
 }
