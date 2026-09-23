@@ -45,7 +45,7 @@ This file records material limitations that must remain visible. Passing reposit
 
 - Android JavaScript export has been verified; a native signed Android build and iOS build have not. iOS native build verification requires macOS/Xcode.
 - Camera, library access, notification actions, cold starts, exact alarms, reboot, idle modes, timezone changes, large text, and screen readers require physical-device testing.
-- Automated UI/end-to-end tests are not yet present. Shared rules and server endpoints have automated coverage, while the mobile flow is protected by strict compilation and bundle checks.
+- Automated UI/end-to-end tests are not yet present. Shared rules (including reminder reconciliation decisions and notification capability reporting) and server endpoints have automated coverage, while the native notification calls and mobile flow are protected only by strict compilation and bundle checks.
 - The dependency audit currently includes moderate advisories in Expo's build-tool dependency chain. The automated audit proposes an incompatible old Expo downgrade rather than a forward fix; monitor upstream releases and reassess before shipping. There are no known high or critical advisories in the checked tree.
 
 ## Release gate

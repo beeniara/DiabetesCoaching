@@ -1319,6 +1319,7 @@ export default function App() {
             ) : null}
           </View>
           <Text style={styles.muted}>Notification permission: {capability?.status ?? "checking"}. Can ask again: {capability?.canAskAgain ? "yes" : "no"}.</Text>
+          {capability ? <Text style={capability.granted ? styles.muted : styles.warningText}>{capability.permissionMessage}</Text> : null}
           <Text style={styles.muted}>{capability ? capability.exactAlarmNote : "Notification capability is being checked."}</Text>
         </View>
 
@@ -1327,7 +1328,7 @@ export default function App() {
           {plans.length > 0 ? plans.map((plan) => (
             <View key={plan.id} style={styles.timelineRow}>
               <Text style={styles.timelineLabel}>{plan.medicationName} at {plan.reminderHour.toString().padStart(2, "0")}:{plan.reminderMinute.toString().padStart(2, "0")}</Text>
-              <Text style={styles.muted}>{describeMedicationPlanStatus(plan, profile?.timezone ?? plan.timezone)}</Text>
+              <Text style={styles.muted}>{describeMedicationPlanStatus(plan, profile?.timezone ?? plan.timezone, capability?.granted)}</Text>
               <Text style={styles.muted}>Needs sync: {medicationPlanNeedsReschedule(plan, profile?.timezone ?? plan.timezone) ? "yes" : "no"} | status: {plan.scheduleStatus}</Text>
               <View style={styles.row}>
                 <Pressable accessibilityRole="button" style={styles.secondaryButton} onPress={() => handleEditReminderPlan(plan)}>
@@ -1716,6 +1717,7 @@ const styles = StyleSheet.create({
   cardTitle: { color: colors.text, fontWeight: "800", fontSize: 18 },
   bodyText: { color: colors.text, lineHeight: 20 },
   muted: { color: colors.muted, fontSize: 13, lineHeight: 18 },
+  warningText: { color: colors.warning, fontSize: 13, lineHeight: 18, fontWeight: "700" },
   metric: { color: colors.text, fontSize: 24, fontWeight: "800" },
   label: { color: colors.text, fontWeight: "700" },
   fieldGroup: { gap: 6 },

@@ -1,6 +1,6 @@
 import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
-import type { MedicationPlan } from "../../../packages/shared/src/medication-plans";
+import { describeNotificationCapability, planMedicationReminderSync, type MedicationPlan } from "../../../packages/shared/src/medication-plans";
 
 export const MEDICATION_REMINDER_CATEGORY = "medication-reminder";
 export const MEDICATION_ACTION_TAKEN = "medication-taken";
@@ -18,16 +18,8 @@ Notifications.setNotificationHandler({
 
 export async function getMedicationNotificationCapability() {
   const permission = await Notifications.getPermissionsAsync();
-  return {
-    status: permission.status,
-    granted: permission.granted,
-    canAskAgain: permission.canAskAgain,
-    canSchedule: permission.granted,
-    exactAlarmStatus: Platform.OS === "android" ? "device-verification-required" as const : "not-applicable" as const,
-    exactAlarmNote: Platform.OS === "android"
-      ? "Android exact-alarm permission is declared, but exact delivery and idle behavior must be verified in device settings and on a physical device."
-      : "The operating system may delay reminders. Delivery timing must be verified on a physical device."
-  };
+  const platform = Platform.OS === "android" ? "android" : Platform.OS === "ios" ? "ios" : "other";
+  return describeNotificationCapability(permission, platform);
 }
 
 export async function configureMedicationNotifications() {
@@ -91,31 +83,19 @@ export async function syncMedicationReminder(plan: MedicationPlan, deviceTimezon
 export async function syncMedicationReminderWithOptions(
   plan: MedicationPlan,
   deviceTimezone: string,
-  options: { promptForPermission: boolean; permissionGranted?: boolean }
-) {
-  if (!plan.enabled) {
+  options: { promptForPermission: boolean; permissionGranted?: boolean; nativeScheduleIds?: ReadonlySet<string> }
+): Promise<MedicationPlan> {
+  const action = planMedicationReminderSync(plan, deviceTimezone, options);
+  if (action.kind === "keep") return plan;
+
+  if (action.kind === "disable") {
     await cancelMedicationReminder(plan.notificationId);
-    return {
-      ...plan,
-      notificationId: undefined,
-      scheduleStatus: "disabled" as const,
-      updatedAt: new Date().toISOString()
-    };
+    return { ...plan, notificationId: undefined, scheduleStatus: "disabled", updatedAt: new Date().toISOString() };
   }
 
-  if (!options.promptForPermission && options.permissionGranted === false) {
+  if (action.kind === "await-permission") {
     await cancelMedicationReminder(plan.notificationId);
-    return {
-      ...plan,
-      notificationId: undefined,
-      timezone: deviceTimezone,
-      scheduleStatus: "pending" as const,
-      updatedAt: new Date().toISOString()
-    };
-  }
-
-  if (plan.notificationId && plan.timezone === deviceTimezone && plan.scheduleStatus === "scheduled") {
-    return plan;
+    return { ...plan, notificationId: undefined, timezone: deviceTimezone, scheduleStatus: "pending", updatedAt: new Date().toISOString() };
   }
 
   await cancelMedicationReminder(plan.notificationId);
@@ -125,7 +105,7 @@ export async function syncMedicationReminderWithOptions(
     ...plan,
     timezone: deviceTimezone,
     notificationId,
-    scheduleStatus: "scheduled" as const,
+    scheduleStatus: "scheduled",
     updatedAt: now,
     lastScheduledAt: now
   };
@@ -145,8 +125,9 @@ export async function reconcileMedicationReminders(
     effectivePermissionGranted = permission.granted;
     if (!permission.granted) issues.push("Notification permission was not granted. Enabled plans remain unscheduled.");
   }
-  let nativeScheduleIds = new Set<string>();
+  let nativeScheduleIds: Set<string> | undefined;
   if (effectivePermissionGranted) {
+    nativeScheduleIds = new Set<string>();
     try {
       const scheduled = await Notifications.getAllScheduledNotificationsAsync();
       nativeScheduleIds = new Set(scheduled.map((request) => request.identifier));
@@ -156,12 +137,10 @@ export async function reconcileMedicationReminders(
   }
   for (const plan of plans) {
     try {
-      const candidate = plan.notificationId && effectivePermissionGranted && !nativeScheduleIds.has(plan.notificationId)
-        ? { ...plan, scheduleStatus: "stale" as const }
-        : plan;
-      reconciled.push(await syncMedicationReminderWithOptions(candidate, deviceTimezone, {
+      reconciled.push(await syncMedicationReminderWithOptions(plan, deviceTimezone, {
         promptForPermission: false,
-        permissionGranted: effectivePermissionGranted
+        permissionGranted: effectivePermissionGranted,
+        nativeScheduleIds
       }));
     } catch (error) {
       issues.push(error instanceof Error ? error.message : "Failed to sync a medication reminder.");

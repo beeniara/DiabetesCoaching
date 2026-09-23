@@ -22,6 +22,8 @@ The app does not diagnose, calculate a dose, change medication, or manage an eme
 - Added Taken, Skipped, and Snooze 10 min notification actions with idempotent medication events.
 - Added notification permission/capability reporting, native identifier reconciliation, timezone refresh, and explicit resync.
 - Added consent-revocation cancellation and Android exact-alarm permission declaration.
+- Moved reminder reconciliation decisions (keep, disable, await permission, reschedule with reason) and notification capability reporting into `packages/shared/src/medication-plans.ts` with unit tests; `apps/mobile/src/reminders.ts` now only performs the native calls.
+- Failed, stale, and permission-blocked reminders show distinct status text, and a denied or blocked notification permission is shown as a warning with the recovery step.
 
 Delivery punctuality, reboot handling, idle modes, and exact-alarm settings remain operating-system behaviours that require the physical-device acceptance matrix.
 
@@ -31,6 +33,7 @@ Delivery punctuality, reboot handling, idle modes, and exact-alarm settings rema
 - Added interstitial-fluid lag warnings during rapid flux and limited/stale status for old or unreliable data.
 - Added BLE GATT glucose, one-to-three-hour cloud delay/rate-limit, meal-recognition, and IMU exercise simulations.
 - Routed single and batch simulations through the same atomic synchronization path.
+- A stored `conflicting` glucose label now survives reload and re-normalization, nearby-reading conflicts are detected per glucose compartment even when other events are logged in between, and the clinician trend compares readings from the same compartment only.
 
 The supplied integrations are safe mocks. Real BLE packet decoding, vendor authentication, and production cloud adapters remain separate future work.
 
