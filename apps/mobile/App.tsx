@@ -13,6 +13,7 @@ import { clearLocalServerSettings, getLocalServerSettings, saveLocalServerSettin
 import { normalizeLocalServerBaseUrl, sendShelfAnalysisToLocalServer, testLocalServerConnection } from "./src/local-server";
 import { cancelAllMedicationReminders, cancelMedicationReminder, cancelRemindersForUnreadablePlans, configureMedicationNotifications, getMedicationNotificationCapability, MEDICATION_ACTION_SKIPPED, MEDICATION_ACTION_SNOOZE, MEDICATION_ACTION_TAKEN, reconcileMedicationReminders, scheduleMedicationSnooze, syncMedicationReminderWithOptions } from "./src/reminders";
 import { describeTimelineFreshness, formatTimelineLabel, summarizeTimeline } from "../../packages/shared/src/timeline";
+import { describeActivityRecognition, reviewGlucoseFriendlyHabits } from "../../packages/shared/src/habits";
 import { normalizeHealthEvent, safeGlucoseDisplay, type ExerciseCategory, type ExerciseEvent, type GlucoseCompartment, type HealthEvent, type MedicationEvent } from "../../packages/shared/src/health-events";
 import { buildEncouragement, createDefaultWellnessGoals, GUIDELINE_SOURCES, pickDailyTip, REGULAR_CHECKS, SEEK_HELP_SIGNS, suggestTipsForWeek, summarizeWeeklyActivity, WellnessGoalsSchema, type WellnessGoals } from "../../packages/shared/src/coaching";
 import { formatCheckInLabel, parseWellbeingCheckIn, reviewWellbeing, type MoodLevel, type StressLevel, type WellbeingCheckIn } from "../../packages/shared/src/wellbeing";
@@ -633,7 +634,7 @@ export default function App() {
     await saveHealthEvent(db, parsed.event);
     setInputs((current) => ({ ...current, mealDescription: "", mealCarbMin: "", mealCarbMax: "" }));
     await refreshTimeline();
-    setStatusMessage("Meal saved locally. Any carbohydrate values remain labelled as estimates.");
+    setStatusMessage("Meal saved locally. Any carbohydrate values remain labelled as estimates. A 10-minute walk in the next hour helps your body use the glucose from this meal; log it when you are back.");
   }
 
   async function handleSaveExercise() {
@@ -666,9 +667,10 @@ export default function App() {
     }
     const db = await openLocalStore();
     await saveHealthEvent(db, parsed.event);
+    const recognition = describeActivityRecognition(parsed.event, events);
     setInputs((current) => ({ ...current, exerciseActivity: "", exerciseDuration: "", exerciseCategory: "" }));
     await refreshTimeline();
-    setStatusMessage("Activity saved locally. Check the Coach tab to see your week.");
+    setStatusMessage(recognition ? `Activity saved locally. ${recognition}` : "Activity saved locally. Check the Coach tab to see your week.");
   }
 
   async function refreshCheckIns() {
@@ -1035,6 +1037,10 @@ export default function App() {
     [clock, events, goals, profile?.timezone]
   );
   const encouragement = useMemo(() => buildEncouragement(weeklyActivity, goals), [goals, weeklyActivity]);
+  const habitReview = useMemo(
+    () => reviewGlucoseFriendlyHabits(events, checkIns, goals, weeklyActivity, new Date(clock), profile?.timezone ?? "Pacific/Auckland"),
+    [checkIns, clock, events, goals, profile?.timezone, weeklyActivity]
+  );
   const wellbeingReview = useMemo(() => reviewWellbeing(checkIns, new Date(clock), 7, unreadableCheckInCount), [checkIns, clock, unreadableCheckInCount]);
   const dailyTip = useMemo(() => pickDailyTip(new Date(clock)), [clock]);
   const suggestedTips = useMemo(
@@ -1570,9 +1576,33 @@ export default function App() {
           <Text style={styles.cardTitle}>Your week in motion</Text>
           <Text style={styles.metric}>{encouragement.headline}</Text>
           <Text style={styles.bodyText}>{encouragement.message}</Text>
+          <Text style={styles.subtitle}>{habitReview.headline}</Text>
+          <Text style={styles.bodyText}>{habitReview.focus ? `Next: ${habitReview.focus.startHere}` : habitReview.message}</Text>
           <Pressable accessibilityRole="button" style={styles.secondaryButton} onPress={() => setActiveTab("coach")}>
             <Text style={styles.secondaryButtonText}>Open Coach</Text>
           </Pressable>
+        </View>
+
+        <View style={[styles.card, activeTab !== "coach" && styles.hidden]}>
+          <Text style={styles.cardTitle}>Habits that help your glucose</Text>
+          <Text style={styles.metric}>{habitReview.headline}</Text>
+          <Text style={styles.bodyText}>{habitReview.message}</Text>
+          {habitReview.habits.map((habit) => (
+            <View
+              key={habit.id}
+              accessible
+              accessibilityLabel={`${habit.title}: ${habit.done} of ${habit.target} ${habit.unit} this week${habit.achieved ? ", on track" : ""}. ${habit.whyItHelps}`}
+              style={styles.timelineRow}
+            >
+              <Text style={styles.timelineLabel}>{habit.title}: {habit.done} of {habit.target} {habit.unit}{habit.achieved ? " (on track)" : ""}</Text>
+              <View style={styles.progressTrack}>
+                <View style={[styles.progressFill, { width: `${Math.min(100, Math.round((habit.done / habit.target) * 100))}%` }]} />
+              </View>
+              <Text style={styles.muted}>{habit.whyItHelps} ({habit.sourceLabel})</Text>
+            </View>
+          ))}
+          {habitReview.focus ? <Text style={styles.bodyText}>Next step: {habitReview.focus.startHere}</Text> : null}
+          <Text style={styles.muted}>{habitReview.safetyNote}</Text>
         </View>
 
         <View style={[styles.card, activeTab !== "coach" && styles.hidden]}>

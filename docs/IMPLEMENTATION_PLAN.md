@@ -72,6 +72,8 @@ Camera/library permission and storage behaviour still require physical-device ac
 - Added a "when to contact your care team" list built from Healthify and Diabetes NZ warning signs, routing to 111, Healthline, GP, or 1737 only; it never gives treatment steps.
 - Added SQLite migration v4 (`wellbeing_checkins`, `wellness_goals`), quick-pick activities, a Coach tab, and a home-screen weekly summary. All new data is included in full local deletion.
 
+- Added glucose-friendly habit recognition in `packages/shared/src/habits.ts`: moving after meals (activity within 90 minutes after a logged meal), active on most days, strength days, and 7 to 9 hours of sleep. Each habit shows weekly progress, why it helps (reusing the sourced tip wording), and a keep-going message; the weakest habit becomes the next step. Logging a meal suggests a short walk, and an activity logged soon after a meal is recognised. It celebrates behaviour, never glucose numbers.
+
 Coaching copy is general wellness information with linked public sources. It has not been reviewed by a New Zealand clinician and is flagged as such in-app and in [KNOWN_RISKS.md](KNOWN_RISKS.md).
 
 ## Release decision

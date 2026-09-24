@@ -57,7 +57,7 @@ export function inferExerciseCategory(event: Pick<ExerciseEvent, "activity" | "c
   return "aerobic";
 }
 
-function localDayKey(isoTimestamp: string, timeZone: string): string {
+export function localDayKey(isoTimestamp: string, timeZone: string): string {
   try {
     return new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(isoTimestamp));
   } catch {
