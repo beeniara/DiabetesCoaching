@@ -65,7 +65,8 @@ to any AI provider.
   (`shelf-analysis.ts`), device/cloud mocks (`mocks.ts`), the deterministic
   lifestyle coaching engine (`coaching.ts`: weekly activity goals, streaks,
   encouragement, sourced tips, seek-help prompts), glucose-friendly habit
-  recognition (`habits.ts`), and wellbeing check-ins (`wellbeing.ts`). Every file has a
+  recognition (`habits.ts`) and the personal after-meal pattern
+  (`habit-patterns.ts`), and wellbeing check-ins (`wellbeing.ts`). Every file has a
   colocated `*.test.ts`. New domain logic and validation belongs here, not in
   either app.
 - **`apps/mobile`** — Expo/React Native client. SQLite (`src/storage.ts`) is

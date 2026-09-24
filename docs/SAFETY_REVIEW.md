@@ -21,7 +21,7 @@ This checklist records the current release boundary for the diabetes coaching ap
 - Treat interstitial-fluid glucose as potentially lagged during rapid change, meals, and exercise.
 - Keep reminder scheduling dependent on OS permissions and device verification, not background assumptions.
 
-## Data completeness (for clinician review)
+## Data completeness and personal patterns (for clinician review)
 
 Stored records that can no longer be read (for example after storage corruption or an incompatible legacy row) are excluded from display but never hidden silently:
 
@@ -31,7 +31,9 @@ Stored records that can no longer be read (for example after storage corruption 
 - The weekly wellbeing review warns that it may be incomplete and withholds "no check-ins" and "no foot checks" prompts that could be false.
 - Unreadable reminder plans are reported, and the person can cancel their device reminders and remove them. Readable plans are never changed by that action.
 
-Questions for the New Zealand clinical reviewer: is the incomplete-data wording clear enough in the export, and should an export with unreadable records carry a stronger caution or be blocked?
+The Coach tab can show a personal after-meal pattern: the typical glucose about 2 hours after meals with movement compared with meals without, from the person's own records, with a not-proof and no-medicine-change caveat.
+
+Questions for the New Zealand clinical reviewer: is the after-meal pattern safe and useful to show, with 5 meals per group and a 0.5 mmol/L threshold? And is the incomplete-data wording clear enough in the export, and should an export with unreadable records carry a stronger caution or be blocked?
 
 ## Usability and accessibility
 

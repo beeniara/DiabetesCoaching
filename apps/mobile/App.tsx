@@ -14,6 +14,7 @@ import { normalizeLocalServerBaseUrl, sendShelfAnalysisToLocalServer, testLocalS
 import { cancelAllMedicationReminders, cancelMedicationReminder, cancelRemindersForUnreadablePlans, configureMedicationNotifications, getMedicationNotificationCapability, MEDICATION_ACTION_SKIPPED, MEDICATION_ACTION_SNOOZE, MEDICATION_ACTION_TAKEN, reconcileMedicationReminders, scheduleMedicationSnooze, syncMedicationReminderWithOptions } from "./src/reminders";
 import { describeTimelineFreshness, formatTimelineLabel, summarizeTimeline } from "../../packages/shared/src/timeline";
 import { describeActivityRecognition, reviewGlucoseFriendlyHabits } from "../../packages/shared/src/habits";
+import { compareAfterMealGlucose } from "../../packages/shared/src/habit-patterns";
 import { normalizeHealthEvent, safeGlucoseDisplay, type ExerciseCategory, type ExerciseEvent, type GlucoseCompartment, type HealthEvent, type MedicationEvent } from "../../packages/shared/src/health-events";
 import { buildEncouragement, createDefaultWellnessGoals, GUIDELINE_SOURCES, pickDailyTip, REGULAR_CHECKS, SEEK_HELP_SIGNS, suggestTipsForWeek, summarizeWeeklyActivity, WellnessGoalsSchema, type WellnessGoals } from "../../packages/shared/src/coaching";
 import { formatCheckInLabel, parseWellbeingCheckIn, reviewWellbeing, type MoodLevel, type StressLevel, type WellbeingCheckIn } from "../../packages/shared/src/wellbeing";
@@ -1041,6 +1042,7 @@ export default function App() {
     () => reviewGlucoseFriendlyHabits(events, checkIns, goals, weeklyActivity, new Date(clock), profile?.timezone ?? "Pacific/Auckland"),
     [checkIns, clock, events, goals, profile?.timezone, weeklyActivity]
   );
+  const afterMealPattern = useMemo(() => compareAfterMealGlucose(events, new Date(clock)), [clock, events]);
   const wellbeingReview = useMemo(() => reviewWellbeing(checkIns, new Date(clock), 7, unreadableCheckInCount), [checkIns, clock, unreadableCheckInCount]);
   const dailyTip = useMemo(() => pickDailyTip(new Date(clock)), [clock]);
   const suggestedTips = useMemo(
@@ -1602,6 +1604,9 @@ export default function App() {
             </View>
           ))}
           {habitReview.focus ? <Text style={styles.bodyText}>Next step: {habitReview.focus.startHere}</Text> : null}
+          <Text style={styles.subtitle}>What your own records show</Text>
+          <Text style={styles.bodyText}>{afterMealPattern.message}</Text>
+          {afterMealPattern.status === "pattern" ? <Text style={styles.muted}>{afterMealPattern.caveat}</Text> : null}
           <Text style={styles.muted}>{habitReview.safetyNote}</Text>
         </View>
 

@@ -73,6 +73,7 @@ Camera/library permission and storage behaviour still require physical-device ac
 - Added SQLite migration v4 (`wellbeing_checkins`, `wellness_goals`), quick-pick activities, a Coach tab, and a home-screen weekly summary. All new data is included in full local deletion.
 
 - Added glucose-friendly habit recognition in `packages/shared/src/habits.ts`: moving after meals (activity within 90 minutes after a logged meal), active on most days, strength days, and 7 to 9 hours of sleep. Each habit shows weekly progress, why it helps (reusing the sourced tip wording), and a keep-going message; the weakest habit becomes the next step. Logging a meal suggests a short walk, and an activity logged soon after a meal is recognised. It celebrates behaviour, never glucose numbers.
+- Added a personal after-meal pattern in `packages/shared/src/habit-patterns.ts`: over the last 4 weeks, the median glucose reading closest to 2 hours (60 to 150 minutes) after meals followed by movement is compared with meals without movement, within one glucose compartment. It stays silent until each group has 5 meals, skips readings affected by a second meal and suspect, conflicting, or missing readings, never discourages movement, and always states that it is a pattern, not proof, and not a reason to change medicines.
 
 Coaching copy is general wellness information with linked public sources. It has not been reviewed by a New Zealand clinician and is flagged as such in-app and in [KNOWN_RISKS.md](KNOWN_RISKS.md).
 

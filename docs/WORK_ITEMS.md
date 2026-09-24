@@ -21,6 +21,7 @@
 - [ ] Produce native Android and iOS release builds with final package IDs, signing, icon, splash, privacy manifests, and store metadata.
 - [ ] Obtain New Zealand clinician approval for target defaults, warning thresholds, Healthline/111 copy, and all limitations.
 - [ ] Obtain New Zealand clinician and dietitian review of all coaching copy: activity goal defaults, glucose-friendly habit targets and wording, wellness tips, wellbeing-review messages, regular-check intervals, and the seek-help sign list.
+- [ ] Obtain New Zealand clinician approval to show the personal after-meal glucose pattern, including its thresholds, minimum data, and wording, or remove it before release.
 - [ ] Complete a privacy impact assessment covering health records, device backups, photos, exports, notifications, retention, deletion, and any AI-provider data controls.
 - [ ] Complete a threat model and independent security review for the chosen LAN, VPN, or HTTPS deployment.
 - [ ] Complete accessibility testing with VoiceOver/TalkBack, large text, contrast, switch/keyboard navigation where applicable, and cognitive usability review.
