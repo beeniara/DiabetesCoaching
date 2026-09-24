@@ -15,13 +15,20 @@
 - [x] Setup, deployment, known-risk, and physical-device test documentation.
 - [x] Deterministic lifestyle coaching: weekly activity goals and progress, streaks, encouragement, sourced wellness tips, wellbeing check-ins, regular-check reminders, and contact-your-care-team prompts.
 
-## Required before real-user release
+## Personal use (current)
+
+The app is used only by its owner. The clinician, dietitian, privacy, security, accessibility, and store items in the next section are not required for personal use. Recommended for the owner:
+
+- [ ] Run the notification, reminder, consent, and delete-data checks from [PHYSICAL_DEVICE_TEST_PLAN.md](PHYSICAL_DEVICE_TEST_PLAN.md) on your own phone, because reminders are best-effort and should not be relied on until you have seen them work.
+- [ ] Take the clinician-review export, and the after-meal pattern if it is useful, to your own GP or diabetes nurse at your next review.
+
+## Only if the app is shared with other people
 
 - [ ] Execute and sign off [PHYSICAL_DEVICE_TEST_PLAN.md](PHYSICAL_DEVICE_TEST_PLAN.md) on every supported Android and iOS version/device family.
 - [ ] Produce native Android and iOS release builds with final package IDs, signing, icon, splash, privacy manifests, and store metadata.
 - [ ] Obtain New Zealand clinician approval for target defaults, warning thresholds, Healthline/111 copy, and all limitations.
 - [ ] Obtain New Zealand clinician and dietitian review of all coaching copy: activity goal defaults, glucose-friendly habit targets and wording, wellness tips, wellbeing-review messages, regular-check intervals, and the seek-help sign list.
-- [ ] Obtain New Zealand clinician approval to show the personal after-meal glucose pattern, including its thresholds, minimum data, and wording, or remove it before release.
+- [ ] Obtain New Zealand clinician approval to show the personal after-meal glucose pattern, including its thresholds, minimum data, and wording, or remove it before sharing the app.
 - [ ] Complete a privacy impact assessment covering health records, device backups, photos, exports, notifications, retention, deletion, and any AI-provider data controls.
 - [ ] Complete a threat model and independent security review for the chosen LAN, VPN, or HTTPS deployment.
 - [ ] Complete accessibility testing with VoiceOver/TalkBack, large text, contrast, switch/keyboard navigation where applicable, and cognitive usability review.

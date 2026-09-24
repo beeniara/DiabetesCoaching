@@ -1,6 +1,6 @@
 # Safety Review Checklist
 
-This checklist records the current release boundary for the diabetes coaching app. It is not a clinical approval; it is a working gate for internal review.
+This checklist records the current release boundary for the diabetes coaching app. It is not a clinical approval; it is a working gate for internal review. The app is currently for its owner's personal use, so the clinical-review questions below apply only if it is shared with other people.
 
 ## Clinical boundaries
 

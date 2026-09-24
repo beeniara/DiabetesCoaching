@@ -9,6 +9,10 @@ decision-support app. It supports personal tracking and clinician
 conversations; it is **not** an autonomous medical device and must never
 diagnose, calculate doses, change medication, or manage emergencies.
 
+It is currently used only by its owner. The clinician, privacy, security, and
+store release gates in `docs/` apply only if it is ever shared with other
+people; the safety and data rules below still apply to the owner's own use.
+
 The mobile app works offline for its core features, with local records stored
 in SQLite by default. An optional self-hosted Express service can validate or
 analyse shelf photos when the user explicitly requests it — this server is the

@@ -79,7 +79,7 @@ Coaching copy is general wellness information with linked public sources. It has
 
 ## Release decision
 
-The repository is a functioning software release candidate, not a clinically or operationally approved production release. The core app is usable offline and failure-safe within the documented boundary. Release to real users is blocked on the external gates in [WORK_ITEMS.md](WORK_ITEMS.md), especially physical-device notification/camera testing and independent New Zealand clinical, privacy, security, and accessibility review.
+The repository is a functioning software release candidate, not a clinically or operationally approved production release. The core app is usable offline and failure-safe within the documented boundary. Release to real users is blocked on the external gates in [WORK_ITEMS.md](WORK_ITEMS.md), especially physical-device notification/camera testing and independent New Zealand clinical, privacy, security, and accessibility review. The app is currently used only by its owner, so those gates apply only if it is ever shared with other people.
 
 ## Verification commands
 
