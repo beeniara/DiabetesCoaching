@@ -1475,7 +1475,7 @@ export default function App() {
 
         <View style={[styles.card, activeTab !== "settings" && styles.hidden]}>
           <Text style={styles.cardTitle}>Local server sync</Text>
-          <Text style={styles.bodyText}>Optional. Keep this local to your own server. Protected routes require a token, and GPT analysis stays off unless you enable it.</Text>
+          <Text style={styles.bodyText}>Optional. Keep this local to your own server. Protected routes require a token. AI analysis stays off unless you enable it on your server, using OpenAI or a local Ollama model that keeps photos on your network.</Text>
           <View style={styles.fieldGroup}>
             <Text style={styles.label}>Server URL</Text>
             <TextInput
@@ -1504,7 +1504,7 @@ export default function App() {
           <View style={styles.rowWrap}>
             {(["mock", "validate", "gpt"] as const).map((mode) => (
               <Pressable key={mode} accessibilityRole="button" style={serverSettings.preferredMode === mode ? styles.pillActive : styles.pill} onPress={() => setServerSettings((current) => ({ ...current, preferredMode: mode }))}>
-                <Text style={serverSettings.preferredMode === mode ? styles.pillActiveText : styles.pillText}>{mode}</Text>
+                <Text style={serverSettings.preferredMode === mode ? styles.pillActiveText : styles.pillText}>{mode === "gpt" ? "AI analysis" : mode}</Text>
               </Pressable>
             ))}
           </View>

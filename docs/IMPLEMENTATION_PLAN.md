@@ -53,6 +53,7 @@ Camera/library permission and storage behaviour still require physical-device ac
 - Added bounded JSON requests, protected `/v1` routes, timing-safe bearer-token checks, explicit CORS, per-client rate limiting, request IDs, and defensive response headers.
 - Added redacted audit writing that excludes photos, bearer tokens, identifiers, and health payloads.
 - Added schema-validated mock and GPT endpoints with timeout/retry limits and safe `503`, `422`, and `502` failure states.
+- Added an optional local Ollama provider (`SHELF_AI_PROVIDER=ollama`) so shelf photos can be analysed by a vision model on the owner's own machine. It reuses the OpenAI path's JSON schema, instructions, and strict validation, times out after 120 seconds, and the app allows 150 seconds for AI analysis.
 - Added secure mobile token storage, normalized server origins, request timeouts, connection testing, and settings deletion.
 - Added integration tests covering health, auth failure, schema validation, AI fail-closed behaviour, CORS, and audit redaction.
 

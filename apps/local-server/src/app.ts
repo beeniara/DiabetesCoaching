@@ -2,7 +2,8 @@ import cors from "cors";
 import express, { type NextFunction, type Request, type Response } from "express";
 import { requireLocalServerAuth } from "./auth.js";
 import { createRequestId, recordAuditEvent } from "./audit.js";
-import { isOpenAiConfigured, SHELF_ANALYSIS_SYSTEM_INSTRUCTIONS } from "./gpt4o.js";
+import { SHELF_ANALYSIS_SYSTEM_INSTRUCTIONS } from "./gpt4o.js";
+import { getShelfAiProvider, isShelfAiConfigured } from "./shelf-ai.js";
 import { handleShelfGpt, handleShelfMock, handleShelfValidate } from "./shelf.js";
 
 function allowedOrigins() {
@@ -65,13 +66,14 @@ export function createApp() {
       statusCode: 200,
       detail: "Health check"
     });
-    return res.json({ status: "ok", service: "local-diabetes-coaching-server", openAiConfigured: isOpenAiConfigured() });
+    return res.json({ status: "ok", service: "local-diabetes-coaching-server", aiProvider: getShelfAiProvider(), aiConfigured: isShelfAiConfigured() });
   });
 
   app.use("/v1", createRateLimiter(), requireLocalServerAuth);
   app.get("/v1/shelf-analysis/instructions", (_req, res) => res.json({
     systemInstructions: SHELF_ANALYSIS_SYSTEM_INSTRUCTIONS,
-    openAiConfigured: isOpenAiConfigured()
+    aiProvider: getShelfAiProvider(),
+    aiConfigured: isShelfAiConfigured()
   }));
   app.post("/v1/shelf-analysis/validate", handleShelfValidate);
   app.post("/v1/shelf-analysis/mock", handleShelfMock);

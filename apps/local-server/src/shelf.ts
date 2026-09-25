@@ -1,7 +1,8 @@
 import type { Request, Response } from "express";
 import { z } from "zod";
 import { ShelfAnalysisSchema, createMockShelfAnalysis } from "../../../packages/shared/src/shelf-analysis.js";
-import { generateGptShelfAnalysis, GptShelfValidationError, isOpenAiConfigured } from "./gpt4o.js";
+import { GptShelfValidationError } from "./gpt4o.js";
+import { describeShelfAiProvider, generateShelfAiAnalysis, isShelfAiConfigured, shelfAiNotConfiguredMessage } from "./shelf-ai.js";
 import { recordAuditEvent } from "./audit.js";
 
 const ShelfMockRequestSchema = z.object({
@@ -51,12 +52,10 @@ export async function handleShelfMock(req: Request, res: Response) {
 }
 
 export async function handleShelfGpt(req: Request, res: Response) {
-  if (!isOpenAiConfigured()) {
-    sendAudit(req, res, "failed", 503, "OpenAI API key not configured for optional GPT shelf analysis.");
-    return res.status(503).json({
-      error: "GPT_NOT_CONFIGURED",
-      message: "Set OPENAI_API_KEY on the local server before using GPT-backed shelf analysis."
-    });
+  const provider = describeShelfAiProvider();
+  if (!isShelfAiConfigured()) {
+    sendAudit(req, res, "failed", 503, `${provider} is not configured for optional AI shelf analysis.`);
+    return res.status(503).json({ error: "GPT_NOT_CONFIGURED", message: shelfAiNotConfiguredMessage() });
   }
 
   const request = ShelfGptRequestSchema.safeParse(req.body);
@@ -66,15 +65,17 @@ export async function handleShelfGpt(req: Request, res: Response) {
   }
 
   try {
-    const candidate = await generateGptShelfAnalysis(request.data);
-    sendAudit(req, res, "validated", 200, "GPT shelf analysis validated locally.");
+    const candidate = await generateShelfAiAnalysis(request.data);
+    sendAudit(req, res, "validated", 200, `${provider} shelf analysis validated locally.`);
     return res.json(candidate);
   } catch (error) {
     if (error instanceof GptShelfValidationError) {
-      sendAudit(req, res, "failed", 422, "GPT shelf analysis failed strict output validation.");
-      return res.status(422).json({ error: "INVALID_GPT_RESPONSE", message: "The GPT response did not match the strict shelf-analysis schema." });
+      sendAudit(req, res, "failed", 422, `${provider} shelf analysis failed strict output validation.`);
+      return res.status(422).json({ error: "INVALID_GPT_RESPONSE", message: "The AI response did not match the strict shelf-analysis schema." });
     }
-    sendAudit(req, res, "failed", 502, "OpenAI shelf analysis request failed upstream.");
-    return res.status(502).json({ error: "GPT_UPSTREAM_FAILURE", message: "The optional AI service did not complete the analysis. Retry later or use local mock mode." });
+    sendAudit(req, res, "failed", 502, `${provider} shelf analysis request failed upstream.`);
+    return res.status(502).json({ error: "GPT_UPSTREAM_FAILURE", message: provider === "Ollama"
+      ? "The local Ollama model did not complete the analysis. Check that Ollama is running and the model is installed, then retry."
+      : "The optional AI service did not complete the analysis. Retry later or use local mock mode." });
   }
 }

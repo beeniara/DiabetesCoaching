@@ -30,7 +30,7 @@ This file records material limitations that must remain visible. Passing reposit
 - SQLite health records and app-owned photos are protected by the mobile operating-system sandbox, not an application-level database encryption key.
 - Device backup, compromised/unlocked devices, screenshots, notification previews, clipboard/share destinations, and development tooling can expand exposure. Decide backup and managed-device policy before release.
 - Full deletion is best-effort across database, files, secure storage, and operating-system schedules. A mid-operation platform failure can leave partial external state and must be retried/verified.
-- GPT analysis sends the selected shelf photo and optional caption to the configured OpenAI account only after an explicit action. Provider retention, geography, contractual controls, and consent language require a privacy assessment.
+- GPT analysis sends the selected shelf photo and optional caption to the configured OpenAI account only after an explicit action. Provider retention, geography, contractual controls, and consent language require a privacy assessment. With `SHELF_AI_PROVIDER=ollama` the photo goes only to the configured Ollama origin; that keeps it on the owner's network only if `OLLAMA_URL` points at a machine they control.
 
 ## Server and network
 
@@ -42,6 +42,7 @@ This file records material limitations that must remain visible. Passing reposit
 ## AI and integration quality
 
 - Shelf analysis is an uncertain visual estimate, not a complete label or nutrition assessment. Packaging, portions, ingredients, allergens, and suitability must be confirmed by the user.
+- Local Ollama vision models are usually less accurate than GPT-4o at reading labels and can take a minute or more per photo without a GPU. Ollama's structured-output support for every JSON-schema keyword depends on the Ollama version, so an unsupported keyword could make it reject the request (reported as a retryable `502`). The Ollama path is tested against a mocked Ollama, not a real model.
 - Model availability, behaviour, price, and API schemas can change. Every response is validated, but a schema-valid response can still be factually wrong.
 - BLE, cloud, meal-recognition, and IMU features currently simulate integration behaviour. They do not connect to a real glucose meter, CGM vendor, vision service, or motion sensor.
 

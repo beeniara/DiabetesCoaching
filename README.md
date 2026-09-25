@@ -77,6 +77,11 @@ Optional server settings:
 - `LOCAL_SERVER_AUDIT_LOG` — JSONL audit path. Records are redacted and never contain photos, bearer tokens, or health payloads.
 - `OPENAI_API_KEY` — enables explicit GPT shelf-photo analysis. Without it, that route returns `503` and the local queue stays retryable.
 - `OPENAI_SHELF_MODEL` — optional model override; defaults to `gpt-4o`.
+- `SHELF_AI_PROVIDER` — `openai` (default) or `ollama`. With `ollama`, AI shelf analysis uses a local model and photos stay on your network; no OpenAI key is needed.
+- `OLLAMA_URL` — Ollama origin; defaults to `http://127.0.0.1:11434`. Point it only at a machine you control: a hosted Ollama endpoint would send your photos off your network.
+- `OLLAMA_SHELF_MODEL` — a vision model you have pulled; defaults to `qwen2.5vl:7b`. On a machine with less memory, try `gemma3:4b`.
+
+To use Ollama: install it from ollama.com, run `ollama pull qwen2.5vl:7b`, then start the server with `SHELF_AI_PROVIDER=ollama`. Pick **AI analysis** as the server mode in the app. A local model can take a minute or more per photo on a machine without a GPU, and is usually less accurate than GPT-4o at reading labels; every answer is still checked against the strict shelf-analysis schema.
 
 Save the URL and token in the mobile Settings tab and use **Test connection**. The token is stored with `expo-secure-store`, not in SQLite. Shelf images are sent only after the user selects **Analyze** in a configured server mode.
 

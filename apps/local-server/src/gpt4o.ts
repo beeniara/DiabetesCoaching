@@ -8,7 +8,7 @@ import { ShelfAnalysisSchema, type ShelfAnalysis } from "../../../packages/share
  */
 export async function validateGptShelfResponse(candidate: unknown): Promise<ShelfAnalysis> {
   const parsed = ShelfAnalysisSchema.safeParse(candidate);
-  if (!parsed.success) throw new GptShelfValidationError("The OpenAI response did not match ShelfAnalysisSchema.");
+  if (!parsed.success) throw new GptShelfValidationError("The AI response did not match ShelfAnalysisSchema.");
   return parsed.data;
 }
 
@@ -18,7 +18,7 @@ export function isOpenAiConfigured() {
   return Boolean(process.env.OPENAI_API_KEY?.trim());
 }
 
-const SHELF_ANALYSIS_JSON_SCHEMA = {
+export const SHELF_ANALYSIS_JSON_SCHEMA = {
   type: "object",
   additionalProperties: false,
   required: ["schemaVersion", "items", "limitations", "safetyNotice"],

@@ -26,9 +26,13 @@ export function normalizeLocalServerBaseUrl(value: string) {
 }
 
 // The timeout covers reading the body too, so a server that stalls after sending headers cannot hang the request.
-async function requestLocalServer(url: string, init: RequestInit): Promise<{ ok: boolean; status: number; body: unknown }> {
+// AI analysis may run on a local Ollama model, which can take up to the server's 120-second limit.
+const AI_ANALYSIS_TIMEOUT_MS = 150000;
+const DEFAULT_TIMEOUT_MS = 35000;
+
+async function requestLocalServer(url: string, init: RequestInit, timeoutMs: number): Promise<{ ok: boolean; status: number; body: unknown }> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 35000);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetch(url, { ...init, signal: controller.signal });
     const text = await response.text();
@@ -68,7 +72,7 @@ export async function sendShelfAnalysisToLocalServer(
           ? { caption: payload.caption, photoDataUrl: payload.photoDataUrl }
           : { caption: payload.caption }
     )
-  });
+  }, mode === "gpt" ? AI_ANALYSIS_TIMEOUT_MS : DEFAULT_TIMEOUT_MS);
 
   if (!response.ok) {
     const serverMessage = typeof response.body === "object" && response.body !== null && "message" in response.body ? response.body.message : undefined;

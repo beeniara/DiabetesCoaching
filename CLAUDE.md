@@ -53,7 +53,8 @@ The local server binds to loopback on port `8787` by default (override with
 `PORT`); protected routes require `LOCAL_SERVER_API_KEY` (24+ random chars).
 See [README.md](README.md) for the full list of server env vars
 (`LOCAL_SERVER_ALLOWED_ORIGINS`, `LOCAL_SERVER_RATE_LIMIT_PER_MINUTE`,
-`LOCAL_SERVER_AUDIT_LOG`, `OPENAI_API_KEY`, `OPENAI_SHELF_MODEL`).
+`LOCAL_SERVER_AUDIT_LOG`, `OPENAI_API_KEY`, `OPENAI_SHELF_MODEL`,
+`SHELF_AI_PROVIDER`, `OLLAMA_URL`, `OLLAMA_SHELF_MODEL`).
 
 ## Architecture
 
@@ -84,9 +85,12 @@ to any AI provider.
 - **`apps/local-server`** — optional Express service (`src/app.ts`,
   `src/index.ts`). `src/auth.ts` enforces the bearer-token check, `src/audit.ts`
   writes redacted JSONL audit records, `src/shelf.ts` validates and routes
-  shelf-photo requests, `src/gpt4o.ts` is the only file allowed to call the
-  external AI provider. Fails closed: without `OPENAI_API_KEY` the analysis
-  route returns `503` and the mobile queue stays retryable rather than erroring.
+  shelf-photo requests, and `src/shelf-ai.ts` picks the AI provider
+  (`SHELF_AI_PROVIDER`). `src/gpt4o.ts` (OpenAI) and `src/ollama.ts` (a local
+  Ollama model) are the only files allowed to call an AI model, and both are
+  held to the same strict schema. Fails closed: when the chosen provider is not
+  configured the analysis route returns `503` and the mobile queue stays
+  retryable rather than erroring.
 
 Simulated device and cloud integrations (BLE GATT glucose `0x1808`/`0x2A18`,
 delayed/rate-limited cloud sync, meal recognition, IMU exercise) in
